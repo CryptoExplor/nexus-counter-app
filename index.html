@@ -202,6 +202,7 @@
         // --- Contract Details (loaded from JSON) ---
         let CONTRACT_ADDRESS;
         let CONTRACT_ABI;
+        let configLoadedSuccessfully = false; // New flag
         
         // --- NEXUS TESTNET CONFIGURATION ---
         const NEXUS_CHAIN_ID_DEC = 3940;
@@ -247,31 +248,32 @@
          */
         async function loadContractConfig() {
             try {
-                // NOTE: This assumes 'contract.json' is available locally or at the root.
-                // Replace this block with your actual deployed contract address and ABI if not using contract.json
+                // IMPORTANT: In a real deployment, ensure contract.json is accessible.
                 const response = await fetch('contract.json'); 
                 if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
                 const data = await response.json();
                 CONTRACT_ADDRESS = data.address;
                 CONTRACT_ABI = data.abi;
+                configLoadedSuccessfully = true;
             } catch (error) {
-                // FALLBACK: If contract.json is not available, use placeholders.
-                CONTRACT_ADDRESS = "0x...YourDeployedContractAddress..."; // Placeholder, replace this!
+                // FALLBACK: Use a hardcoded, minimal placeholder ABI if loading failed,
+                // but rely on configLoadedSuccessfully=false to stop connection later.
+                CONTRACT_ADDRESS = "0x148Ed472d09565Db0aAa3b4a8c521fCB41d132Fa"; // Generic fake address
                 CONTRACT_ABI = [
                     "function getCount() view returns (uint256)",
                     "function fee() view returns (uint256)",
                     "function increment() payable",
                     "function decrement() payable",
                     "function resetCounter(uint256)",
-                    "function owner() view returns (address)", // Added OpenZeppelin owner getter
+                    "function owner() view returns (address)", 
                     "function getUserStats(address) view returns (uint256, uint256, uint256, uint256)",
-                    "function getTopAddresses() view returns (address[])", // Added for Leaderboard
-                    "function getTopCounts() view returns (uint256[])", // Added for Leaderboard
+                    "function getTopAddresses() view returns (address[])", 
+                    "function getTopCounts() view returns (uint256[])", 
                 ]; 
                 
                 if (error.message.includes('HTTP error!')) {
-                    console.error("Could not load contract.json. Using placeholder ABI/Address.", error);
-                    displayMessage("Warning: Using placeholder contract config. Please ensure 'contract.json' is deployed.", 'error');
+                    console.error("Could not load contract.json. Using generic placeholder ABI/Address to prevent runtime errors on contract object creation.", error);
+                    displayMessage("Warning: Contract config failed to load. Please ensure 'contract.json' is deployed correctly.", 'error');
                 } else {
                     console.error("Fatal Error: Could not load contract.json.", error);
                     displayMessage("Could not load contract configuration.", 'error');
@@ -294,15 +296,15 @@
         function startAutoRefresh() {
             if (autoRefreshInterval) return; // already running
             autoRefreshInterval = setInterval(async () => {
-                if (userAddress && contract) {
+                // Ensure we have a contract instance and user is connected before refreshing
+                if (contract && userAddress) { 
                     const prevValue = ui.counterValue.textContent;
                     await updateCount(false);
-                    // Only update badge and leaderboard if counter value changed or if user is connected
+                    // Only update badge and leaderboard if counter value changed
                     if (ui.counterValue.textContent !== "Error" && ui.counterValue.textContent !== prevValue) {
                         await updateBadge();
                         await fetchLeaderboard();
                     }
-                    // Always re-check admin status and cooldown time (optional, but good for UX)
                     updateAdminUI(); 
                 }
             }, 5000); // refresh every 5 seconds
@@ -436,10 +438,9 @@
 
         /**
          * Toggles the visibility of admin controls by checking the contract's owner.
-         * FIX: Fetches the owner from the contract's public 'owner()' function.
          */
         async function updateAdminUI() {
-            if (!userAddress) {
+            if (!userAddress || !configLoadedSuccessfully) {
                 ui.adminControls.style.display = "none";
                 return;
             }
@@ -456,9 +457,10 @@
 
         /**
          * Fetches and displays the top 20 users from the contract.
-         * FIX: Now calls getTopAddresses() and getTopCounts() separately.
          */
         async function fetchLeaderboard() {
+            if (!configLoadedSuccessfully) return;
+
             try {
                 const readOnlyContract = await getReadContract();
                 
@@ -502,7 +504,7 @@
          * Fetches user stats and updates the badge tier display using the tier value (index 3).
          */
         async function updateBadge() {
-            if (!userAddress) {
+            if (!userAddress || !configLoadedSuccessfully) {
                 ui.badgeTierContainer.classList.add('hidden');
                 return;
             }
@@ -544,7 +546,7 @@
             } else {
                 if (WALLETCONNECT_PROJECT_ID.includes("YOUR_WALLETCONNECT_PROJECT_ID")) {
                      displayMessage('ERROR: WalletConnect Project ID is required.', 'error');
-                     throw new Error("Missing WalletConnect Project ID");
+                     throw new new Error("Missing WalletConnect Project ID");
                 }
                 const wcProvider = await EthereumProvider.init({
                     projectId: WALLETCONNECT_PROJECT_ID,
@@ -555,7 +557,8 @@
                 
                 // Event listeners for WalletConnect provider
                 wcProvider.on("accountsChanged", async (accounts) => {
-                    if (accounts.length > 0) await connectWallet(); else window.location.reload();
+                    // This handles wallet changes without full reload
+                    if (accounts.length > 0) await connectWallet(true); else window.location.reload(); 
                 });
                 wcProvider.on("chainChanged", async (chainId) => {
                     if (normalizeChainId(chainId) !== normalizeChainId(NEXUS_CHAIN_ID_DEC)) {
@@ -564,18 +567,22 @@
                         setActionButtonsEnabled(false);
                         stopAutoRefresh();
                     } else {
-                        await connectWallet();
+                        // Re-initialize provider on correct chain change
+                        await connectWallet(true); 
                     }
                 });
                 wcProvider.on("disconnect", () => {
+                    // Force a reload on disconnect for a clean state
                     stopAutoRefresh();
                     window.location.reload();
                 });
 
+                // Attempt to connect immediately. This is the part that opens the QR code.
                 await wcProvider.connect();
                 currentProviderInstance = wcProvider;
             }
 
+            // After a successful connection/provider setup:
             provider = new ethers.BrowserProvider(currentProviderInstance);
             signer = await provider.getSigner();
             contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
@@ -586,18 +593,16 @@
                 throw new Error('Wrong Network: ' + network.chainId.toString(10));
             }
 
+            // Everything succeeded, update UI and start operations
             ui.userMeta.textContent = formatAddress(userAddress);
             setStatus('Connected to Nexus Testnet', 'text-green-600');
             updateConnectButton('CONNECTED');
             setActionButtonsEnabled(true);
             
-            // --- New/Updated Calls After Connection ---
             await updateCount(true);
             await updateBadge();
-            await updateAdminUI(); // Check if user is admin
-            fetchLeaderboard(); // Fetch leaderboard data
-            // --- End New/Updated Calls ---
-
+            await updateAdminUI(); 
+            fetchLeaderboard(); 
             startAutoRefresh();
         }
 
@@ -607,12 +612,12 @@
             updateConnectButton('LOADING');
             try {
                 await currentProviderInstance.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: NEXUS_CHAIN_ID_HEX }] });
-                await connectWallet(); 
+                await connectWallet(true); // Force re-init after switch
             } catch (error) {
                 if (error.code === 4902) {
                     try {
                         await currentProviderInstance.request({ method: 'wallet_addEthereumChain', params: [{ chainId: NEXUS_CHAIN_ID_HEX, chainName: 'Nexus Testnet', rpcUrls: [NEXUS_RPC_URL], blockExplorerUrls: [EXPLORER_URL], nativeCurrency: NATIVE_CURRENCY }] });
-                        await connectWallet();
+                        await connectWallet(true);
                     } catch (addError) {
                         displayMessage('Failed to add Nexus Testnet.', 'error');
                     }
@@ -623,10 +628,20 @@
             } finally { isConnecting = false; }
         }
 
-        async function connectWallet() {
-            if (isConnecting) return;
+        async function connectWallet(isRetry = false) {
+            if (isConnecting && !isRetry) return;
             isConnecting = true;
             updateConnectButton('LOADING');
+            
+            // Critical check: Stop connection if config isn't loaded
+            if (!configLoadedSuccessfully) {
+                displayMessage("Configuration Missing: Please deploy 'contract.json' and refresh.", 'error');
+                isConnecting = false;
+                // Re-run window.onload logic to ensure UI state is correct for disconnected/failed config
+                await window.onload(); 
+                return;
+            }
+
             try {
                 await initProvider();
             } catch (e) {
@@ -647,6 +662,11 @@
         }
 
         async function updateCount(triggerAnimation = false) {
+            if (!configLoadedSuccessfully) {
+                ui.counterValue.textContent = "Config Error";
+                return;
+            }
+
             ui.counterValue.classList.add("counter-loading");
             try {
                 const contract = await getReadContract();
@@ -658,9 +678,10 @@
                 }
                 ui.counterValue.textContent = newValue;
             } catch (e) {
+                // More helpful error message for the user based on the screenshot
                 ui.counterValue.textContent = "Error";
                 console.error("Read count error:", e);
-                if (triggerAnimation) displayMessage("Failed to read counter value.", 'error');
+                if (triggerAnimation) displayMessage("Failed to read counter value. Check contract address/ABI.", 'error');
             } finally {
                 ui.counterValue.classList.remove("counter-loading");
             }
@@ -670,7 +691,7 @@
          * Sends a transaction to increment or decrement the counter.
          */
         async function sendTransaction(methodName, buttonElement, originalText) {
-            if (!contract || buttonElement.disabled) return;
+            if (!contract || buttonElement.disabled || !configLoadedSuccessfully) return;
             setActionButtonsEnabled(false);
             addSpinner(buttonElement, originalText);
             setStatus('Awaiting Signature...', 'text-yellow-600');
@@ -732,6 +753,8 @@
 
         // --- Admin Reset Button Handler ---
         ui.resetBtn.onclick = async () => {
+            if (!configLoadedSuccessfully) return;
+
             // Note: We don't need to check for admin status here as the contract will revert if msg.sender is not the owner
             const newValueStr = prompt("Enter new counter value:");
             if (newValueStr !== null) {
@@ -758,15 +781,27 @@
         // --- End Admin Reset Button Handler ---
 
         window.onload = async () => {
+            // First, try to load configuration
             await loadContractConfig();
-            if (!CONTRACT_ADDRESS || !CONTRACT_ABI || CONTRACT_ADDRESS.includes("YourDeployedContractAddress")) {
-                setStatus('Config Load Failed (Update Address)', 'text-red-500');
+            
+            // Check if loading failed or the placeholder address is still used
+            if (!configLoadedSuccessfully) {
+                // If config fails, prevent connection and show error
+                setStatus('Config Error: Missing contract.json', 'text-red-500');
+                ui.counterValue.textContent = "Config Error";
                 updateConnectButton('DISCONNECTED');
                 ui.connectBtn.disabled = true;
+                setActionButtonsEnabled(false);
                 return;
             }
+            
+            // Initial read of the counter (will be '0' or the actual count if successful)
             await updateCount(false);
-            fetchLeaderboard(); // Fetch leaderboard on initial load
+            
+            // Fetch leaderboard on initial load (optional, but good if contract is live)
+            fetchLeaderboard(); 
+            
+            // If we successfully loaded config, prepare to connect
             setStatus('Ready to connect', 'text-gray-500');
             updateConnectButton('DISCONNECTED');
             setActionButtonsEnabled(false);
