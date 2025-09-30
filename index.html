@@ -36,14 +36,16 @@
     <style>
         /* --- Color Configuration --- */
         :root {
-            --background: #ffffff;
-            --foreground: #171717;
-            --subtle-bg: #f5f5f5;
-            --subtle-text: #525252;
+            /* Forcing black background */
+            --background: #000000;
+            --foreground: #ededed;
+            --subtle-bg: #1f1f1f;
+            --subtle-text: #a3a3a3;
         }
+        /* Overriding dark mode preference to keep it black */
         @media (prefers-color-scheme: dark) {
             :root {
-                --background: #0a0a0a;
+                --background: #000000;
                 --foreground: #ededed;
                 --subtle-bg: #1f1f1f;
                 --subtle-text: #a3a3a3;
@@ -65,12 +67,14 @@
         }
 
         .app-card {
-            background-color: var(--background);
-            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
-        }
-
-        .app-subtle-box {
+            /* Adjusting card background for black theme */
             background-color: var(--subtle-bg);
+            box-shadow: 0 10px 25px -3px rgba(255, 255, 255, 0.1), 0 4px 6px -2px rgba(255, 255, 255, 0.05);
+        }
+        
+        /* Adjusted subtle box to stand out slightly from the black background */
+        .app-subtle-box {
+            background-color: #1a1a1a; 
         }
 
         /* --- Custom Counter Scaling --- */
@@ -97,96 +101,103 @@
         }
     </style>
 </head>
-<body class="min-h-screen flex items-center justify-center p-4 relative">
+<!-- 
+    Updated body to use flex-col and min-h-screen for proper vertical stacking.
+    This fixes the footer overlap issue by letting content dictate the height.
+-->
+<body class="min-h-screen flex flex-col items-center p-4">
 
-    <div id="app-card" class="app-card p-8 md:p-12 rounded-xl w-full max-w-lg transition-all duration-300">
-        
-        <!-- Title & Subtitle -->
-        <h1 class="text-3xl font-light tracking-tight mb-6 text-center">
-            Nexus Counter
-        </h1>
-        <p class="text-center mb-8" style="color: var(--subtle-text);">
-            A simple dApp on the Nexus network.
-        </p>
-
-        <!-- Status and User Meta -->
-        <div class="flex flex-col sm:flex-row justify-between items-center mb-6 p-4 app-subtle-box rounded-lg">
-            <div class="flex items-center mb-2 sm:mb-0">
-                <span class="text-xs font-medium uppercase tracking-wider mr-2" style="color: var(--subtle-text);">Status:</span>
-                <span id="status-meta" class="text-sm font-medium text-gray-500">Disconnected</span>
-            </div>
-            <div class="flex items-center">
-                <span class="text-xs font-medium uppercase tracking-wider mr-2" style="color: var(--subtle-text);">Wallet:</span>
-                <span id="user-meta" class="text-sm font-mono" style="color: var(--foreground);">Not Connected</span>
-            </div>
-        </div>
-
-        <!-- Counter Value Display -->
-        <div class="text-center my-10">
-            <p class="font-black counter-glow transition-colors duration-500" id="counter-value">
-                0
-            </p>
-            <p class="text-xs mt-2" style="color: var(--subtle-text);">Current contract value</p>
-        </div>
-
-        <!-- Badge Tier Display -->
-        <div id="badge-tier-container" class="text-center -mt-6 mb-8 hidden">
-             <span id="badge-tier" class="text-lg font-semibold text-indigo-600 dark:text-indigo-400"></span>
-        </div>
-
-        <!-- Action Area -->
-        <div class="flex flex-col space-y-4">
+    <!-- Main Content Wrapper -->
+    <main class="flex-grow flex items-center justify-center w-full">
+        <div id="app-card" class="app-card p-8 md:p-12 rounded-xl w-full max-w-lg transition-all duration-300">
             
-            <!-- Connect/Switch/Connected Button -->
-            <button id="connect-btn" class="w-full py-3 px-6 text-lg font-medium rounded-full bg-black hover:bg-gray-800 text-white shadow-xl transition-all duration-300 focus:outline-none focus:ring-4 focus:ring-gray-500 focus:ring-opacity-50 active:scale-[0.98]">
-                Connect Wallet
-            </button>
+            <!-- Title & Subtitle -->
+            <h1 class="text-3xl font-light tracking-tight mb-6 text-center">
+                Nexus Counter
+            </h1>
+            <p class="text-center mb-8" style="color: var(--subtle-text);">
+                A simple dApp on the Nexus network.
+            </p>
 
-            <!-- Increment/Decrement Group (hidden initially) -->
-            <div id="inc-dec-group" class="hidden flex space-x-4">
-                <button id="decrement-btn" disabled class="flex-1 py-3 px-6 text-lg font-medium rounded-full bg-red-600 hover:bg-red-700 text-white shadow-xl transition-all duration-300 focus:outline-none focus:ring-4 focus:ring-red-500 focus:ring-opacity-50 disabled:bg-red-400 disabled:cursor-not-allowed active:scale-[0.98]">
-                    Decrement
+            <!-- Status and User Meta -->
+            <div class="flex flex-col sm:flex-row justify-between items-center mb-6 p-4 app-subtle-box rounded-lg">
+                <div class="flex items-center mb-2 sm:mb-0">
+                    <span class="text-xs font-medium uppercase tracking-wider mr-2" style="color: var(--subtle-text);">Status:</span>
+                    <span id="status-meta" class="text-sm font-medium text-gray-500">Disconnected</span>
+                </div>
+                <div class="flex items-center">
+                    <span class="text-xs font-medium uppercase tracking-wider mr-2" style="color: var(--subtle-text);">Wallet:</span>
+                    <span id="user-meta" class="text-sm font-mono" style="color: var(--foreground);">Not Connected</span>
+                </div>
+            </div>
+
+            <!-- Counter Value Display -->
+            <div class="text-center my-10">
+                <p class="font-black counter-glow transition-colors duration-500" id="counter-value">
+                    0
+                </p>
+                <p class="text-xs mt-2" style="color: var(--subtle-text);">Current contract value</p>
+            </div>
+
+            <!-- Badge Tier Display -->
+            <div id="badge-tier-container" class="text-center -mt-6 mb-8 hidden">
+                 <span id="badge-tier" class="text-lg font-semibold text-indigo-400"></span>
+            </div>
+
+            <!-- Action Area -->
+            <div class="flex flex-col space-y-4">
+                
+                <!-- Connect/Switch/Connected Button -->
+                <button id="connect-btn" class="w-full py-3 px-6 text-lg font-medium rounded-full bg-white hover:bg-gray-200 text-black shadow-xl transition-all duration-300 focus:outline-none focus:ring-4 focus:ring-gray-400 focus:ring-opacity-50 active:scale-[0.98] dark:bg-white dark:hover:bg-gray-200 dark:text-black">
+                    Connect Wallet
                 </button>
-                <button id="increment-btn" disabled class="flex-1 py-3 px-6 text-lg font-medium rounded-full bg-green-600 hover:bg-green-700 text-white shadow-xl transition-all duration-300 focus:outline-none focus:ring-4 focus:ring-green-500 focus:ring-opacity-50 disabled:bg-green-400 disabled:cursor-not-allowed active:scale-[0.98]">
-                    Increment
-                </button>
+
+                <!-- Increment/Decrement Group (hidden initially) -->
+                <div id="inc-dec-group" class="hidden flex space-x-4">
+                    <button id="decrement-btn" disabled class="flex-1 py-3 px-6 text-lg font-medium rounded-full bg-red-600 hover:bg-red-700 text-white shadow-xl transition-all duration-300 focus:outline-none focus:ring-4 focus:ring-red-500 focus:ring-opacity-50 disabled:bg-red-400 disabled:cursor-not-allowed active:scale-[0.98]">
+                        Decrement
+                    </button>
+                    <button id="increment-btn" disabled class="flex-1 py-3 px-6 text-lg font-medium rounded-full bg-green-600 hover:bg-green-700 text-white shadow-xl transition-all duration-300 focus:outline-none focus:ring-4 focus:ring-green-500 focus:ring-opacity-50 disabled:bg-green-400 disabled:cursor-not-allowed active:scale-[0.98]">
+                        Increment
+                    </button>
+                </div>
+            </div>
+
+            <!-- Admin Controls -->
+            <div id="admin-controls" class="hidden p-4 border border-gray-700 rounded-xl bg-gray-900 mt-6">
+                <h2 class="text-lg font-semibold mb-2 text-center text-red-400">Admin Controls (Owner Only)</h2>
+                <button id="reset-btn" class="w-full px-4 py-3 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700 transition duration-300">Reset Counter</button>
+            </div>
+
+            <!-- Leaderboard -->
+            <div id="leaderboard-container" class="hidden mt-6 p-4 border border-gray-700 rounded-xl app-subtle-box">
+                <h2 class="text-lg font-semibold mb-3 text-center">Top 20 Leaderboard</h2>
+                <!-- Leaderboard List -->
+                <div id="leaderboard-list" class="space-y-1"></div>
+                <!-- User Rank Display -->
+                <div id="user-rank" class="mt-4 text-center text-sm font-semibold text-indigo-400"></div>
+            </div>
+
+            <!-- Message/Error Display (hidden initially) -->
+            <div id="message-container" class="mt-6 p-3 rounded-xl text-center hidden">
+                <div id="message-text" class="font-medium"></div>
+                <div id="tx-details" class="mt-2 text-sm flex justify-center items-center gap-2 hidden">
+                    <a id="tx-link" target="_blank" rel="noopener noreferrer" class="font-mono text-indigo-400 hover:underline"></a>
+                    <!-- Copy Button -->
+                    <button id="copy-btn" data-hash="" class="flex items-center text-xs px-2 py-1 rounded bg-indigo-900 text-indigo-300 hover:bg-indigo-800 transition duration-200" title="Copy Transaction Hash">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 mr-1" viewBox="0 0 20 20" fill="currentColor">
+                            <path d="M7 9a2 2 0 012-2h6a2 2 0 012 2v6a2 2 0 01-2 2H9a2 2 0 01-2-2V9z" />
+                            <path d="M5 3a2 2 0 00-2 2v6a2 2 0 002 2V5h6a2 2 0 00-2-2H5z" />
+                        </svg>
+                        Copy Hash
+                    </button>
+                </div>
             </div>
         </div>
-
-        <!-- Admin Controls -->
-        <div id="admin-controls" class="hidden p-4 border rounded-xl bg-gray-50 dark:bg-gray-800 mt-6">
-            <h2 class="text-lg font-semibold mb-2 text-center text-red-600 dark:text-red-400">Admin Controls (Owner Only)</h2>
-            <button id="reset-btn" class="w-full px-4 py-3 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700 transition duration-300">Reset Counter</button>
-        </div>
-
-        <!-- Leaderboard -->
-        <div id="leaderboard-container" class="hidden mt-6 p-4 border border-gray-200 dark:border-gray-700 rounded-xl app-subtle-box">
-            <h2 class="text-lg font-semibold mb-3 text-center">Top 20 Leaderboard</h2>
-            <!-- Leaderboard List -->
-            <div id="leaderboard-list" class="space-y-1"></div>
-            <!-- User Rank Display -->
-            <div id="user-rank" class="mt-4 text-center text-sm font-semibold text-indigo-600 dark:text-indigo-400"></div>
-        </div>
-
-        <!-- Message/Error Display (hidden initially) -->
-        <div id="message-container" class="mt-6 p-3 rounded-xl text-center hidden">
-            <div id="message-text" class="font-medium"></div>
-            <div id="tx-details" class="mt-2 text-sm flex justify-center items-center gap-2 hidden">
-                <a id="tx-link" target="_blank" rel="noopener noreferrer" class="font-mono text-indigo-600 dark:text-indigo-400 hover:underline"></a>
-                <!-- Copy Button -->
-                <button id="copy-btn" data-hash="" class="flex items-center text-xs px-2 py-1 rounded bg-indigo-100 text-indigo-700 hover:bg-indigo-200 transition duration-200" title="Copy Transaction Hash">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 mr-1" viewBox="0 0 20 20" fill="currentColor">
-                        <path d="M7 9a2 2 0 012-2h6a2 2 0 012 2v6a2 2 0 01-2 2H9a2 2 0 01-2-2V9z" />
-                        <path d="M5 3a2 2 0 00-2 2v6a2 2 0 002 2V5h6a2 2 0 00-2-2H5z" />
-                    </svg>
-                    Copy Hash
-                </button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Footer -->
-    <footer class="absolute bottom-0 left-0 right-0 flex justify-center gap-6 py-4" style="color: var(--subtle-text);">
+    </main>
+    
+    <!-- Footer - Removed 'absolute' to prevent overlap and let it flow naturally -->
+    <footer class="flex justify-center gap-6 py-4 mt-auto w-full" style="color: var(--subtle-text);">
         <a href="https://farcaster.xyz/dare1.eth" target="_blank" aria-label="Farcaster">
             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.486 2 2 6.486 2 12s4.486 10 10 10 10-4.486 10-10S17.514 2 12 2zm0 18c-4.411 0-8-3.589-8-8s3.589-8 8-8 8 3.589 8 8-3.589 8-8 8z"/><path d="M12 7c-2.757 0-5 2.243-5 5s2.243 5 5 5 5-2.243 5-5-2.243-5-5-5zm0 8c-1.654 0-3-1.346-3-3s1.346-3 3-3 3 1.346 3 3-1.346 3-3 3z"/></svg>
         </a>
@@ -195,6 +206,10 @@
         </a>
     </footer>
 
+    <!-- Image below the footer (NEW POSITION) -->
+    <div class="mt-4 mb-4 w-full max-w-lg flex justify-center">
+        <img src="bottom.png" alt="Bottom Image" class="max-w-full h-auto rounded-xl shadow-lg" onerror="this.style.display='none'">
+    </div>
     <!-- Farcaster SDK (UNCHANGED) -->
     <script type="module">
         import { sdk } from 'https://esm.sh/@farcaster/miniapp-sdk';
@@ -396,28 +411,32 @@
         function updateConnectButton(state) {
             ui.connectBtn.disabled = false;
             ui.connectBtn.onclick = null;
-            ui.connectBtn.classList.remove('bg-red-600', 'hover:bg-red-700', 'bg-black', 'hover:bg-gray-800');
+            // Reset base classes for button
+            ui.connectBtn.classList.remove('bg-red-600', 'hover:bg-red-700', 'bg-white', 'hover:bg-gray-200');
+            ui.connectBtn.classList.remove('dark:bg-white', 'dark:hover:bg-gray-200', 'text-black', 'dark:text-black');
+
             switch (state) {
                 case 'CONNECTED':
                     ui.connectBtn.textContent = 'Wallet Connected';
                     ui.connectBtn.disabled = true; 
-                    ui.connectBtn.classList.add('bg-black');
+                    ui.connectBtn.classList.add('bg-gray-700', 'text-white');
                     break;
                 case 'WRONG_NETWORK':
                     ui.connectBtn.textContent = 'Switch to Nexus Testnet';
                     ui.connectBtn.onclick = switchToNexus;
-                    ui.connectBtn.classList.add('bg-red-600', 'hover:bg-red-700');
+                    ui.connectBtn.classList.add('bg-red-600', 'hover:bg-red-700', 'text-white');
                     break;
                 case 'LOADING':
                     ui.connectBtn.textContent = 'Connecting...';
                     ui.connectBtn.disabled = true;
-                    ui.connectBtn.classList.add('bg-black');
+                    ui.connectBtn.classList.add('bg-gray-700', 'text-white');
                     break;
                 case 'DISCONNECTED':
                 default:
                     ui.connectBtn.textContent = 'Connect Wallet';
+                    // Re-apply the desired light/dark theme styles for the default state
+                    ui.connectBtn.classList.add('bg-white', 'hover:bg-gray-200', 'text-black', 'dark:bg-white', 'dark:hover:bg-gray-200', 'dark:text-black');
                     ui.connectBtn.onclick = connectWallet;
-                    ui.connectBtn.classList.add('bg-black', 'hover:bg-gray-800');
                     break;
             }
         }
@@ -428,9 +447,9 @@
             if (messageTimeoutId) clearTimeout(messageTimeoutId);
             ui.txDetails.classList.add('hidden'); 
             switch (type) {
-                case 'error': baseClasses += ' bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300'; duration = 8000; break;
-                case 'success': baseClasses += ' bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300'; break;
-                default: baseClasses += ' bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300'; break;
+                case 'error': baseClasses += ' bg-red-900 text-red-300 border border-red-700'; duration = 8000; break;
+                case 'success': baseClasses += ' bg-green-900 text-green-300 border border-green-700'; break;
+                default: baseClasses += ' bg-blue-900 text-blue-300 border border-blue-700'; break;
             }
             ui.messageContainer.className = baseClasses;
             ui.messageText.textContent = message;
@@ -522,8 +541,8 @@
                     for (let i = 0; i < addresses.length; i++) {
                         const isCurrentUser = userAddress && addresses[i].toLowerCase() === userAddress.toLowerCase();
                         const rowClass = isCurrentUser 
-                            ? 'bg-indigo-100 dark:bg-indigo-900 ring-2 ring-indigo-500' 
-                            : i % 2 === 0 ? 'bg-white dark:bg-gray-900' : 'app-subtle-box'; 
+                            ? 'bg-indigo-900 ring-2 ring-indigo-500' // Darker background for current user
+                            : i % 2 === 0 ? 'app-subtle-box' : '#1a1a1a'; // Alternate subtle backgrounds
                         
                         ui.leaderboardList.innerHTML += `<div class="flex justify-between items-center text-sm p-3 rounded-md transition-colors duration-200 ${rowClass}">
                             <span class="font-mono text-sm">${i + 1}. ${formatAddress(addresses[i])}</span>
@@ -591,14 +610,6 @@
             isConnecting = true;
             updateConnectButton('LOADING');
             try {
-                // NOTE: The strict Farcaster check is removed here to allow the app to load
-                // in the Canvas preview, even though the connection will still fail because 
-                // the required 'window.fcMiniApp' object is missing.
-                /* if (!isFarcasterMiniApp()) {
-                     throw new Error("This dApp must be run within a Farcaster Mini App environment.");
-                }
-                */
-
                 // 1. Connect using the Farcaster connector
                 const { accounts, chainId } = await connect(wagmiConfig, { 
                     connector: wagmiConfig.connectors.find(c => c.id === 'farcasterMiniApp'),
@@ -615,7 +626,7 @@
 
                 // 3. Connection successful
                 ui.userMeta.textContent = formatAddress(userAddress);
-                setStatus('Connected to Nexus Testnet', 'text-green-600');
+                setStatus('Connected to Nexus Testnet', 'text-green-500');
                 updateConnectButton('CONNECTED');
                 setActionButtonsEnabled(true);
                 
@@ -723,7 +734,7 @@
             if (!userAddress || buttonElement.disabled) return;
             setActionButtonsEnabled(false);
             addSpinner(buttonElement, originalText);
-            setStatus('Awaiting Signature...', 'text-yellow-600');
+            setStatus('Awaiting Signature...', 'text-yellow-500');
             ui.messageContainer.classList.add('hidden'); 
             
             let hash;
@@ -740,14 +751,14 @@
                 hash = writeHash;
 
                 buttonElement.textContent = 'Waiting for Tx...';
-                setStatus('Transaction sent, waiting for mining...', 'text-orange-600');
+                setStatus('Transaction sent, waiting for mining...', 'text-orange-500');
                 
                 // 2. Wait for the transaction receipt
                 const receipt = await waitForTransactionReceipt(wagmiConfig, { hash, chainId: NEXUS_CHAIN_ID_DEC });
                 
                 if (receipt.status === 'success') {
                     displayMessage('Transaction successful!', 'success', hash);
-                    setStatus('Connected to Nexus Testnet', 'text-green-600');
+                    setStatus('Connected to Nexus Testnet', 'text-green-500');
                     await updateCount(true); 
                     await updateBadge();
                     await fetchLeaderboard();
@@ -771,7 +782,7 @@
 
                 displayMessage(displayReason, 'error', hash);
 
-                if (userAddress) setStatus('Connected to Nexus Testnet', 'text-green-600');
+                if (userAddress) setStatus('Connected to Nexus Testnet', 'text-green-500');
             } finally {
                 setActionButtonsEnabled(true);
                 buttonElement.textContent = originalText;
