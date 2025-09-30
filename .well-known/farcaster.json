@@ -1,0 +1,26 @@
+{
+  "frame": {
+    "name": "Nexus Counter",
+    "version": "1",
+    "iconUrl": "https://nexus-counter.vercel.app/icon.png",
+    "homeUrl": "https://nexus-counter.vercel.app",
+    "imageUrl": "https://nexus-counter.vercel.app/image.png",
+    "buttonTitle": "Nexus Counter",
+    "splashImageUrl": "https://nexus-counter.vercel.app/splash.png",
+    "splashBackgroundColor": "#1B1B1E",
+    "webhookUrl": "https://nexus-counter.vercel.app/api/webhook",
+    "primaryCategory": "productivity",
+    "tags": [
+      "nexus",
+      "counter",
+      "dapp"
+    ],
+    "description": "Track, increment, and earn evolving NFT badges with every click. A fun way to engage on-chain with friends and leaderboards.",
+    "subtitle": "On-chain Counter + NFTs"
+  },
+  "accountAssociation": {
+    "header": "eyJmaWQiOjYxMjA2NiwidHlwZSI6ImF1dGgiLCJrZXkiOiIweDE4MjhjNEJmNzhEQWI2NkI0QjdkZUJmYUEzOEYwQWQxMjVFYzhkMTUifQ",
+    "payload": "eyJkb21haW4iOiJuZXh1cy1jb3VudGVyLnZlcmNlbC5hcHAifQ",
+    "signature": "q0I8SVCLHgo/O7yh8R9I1mNjbyPwgkVQRGVEx8k4SoBLYYrcbPip2KM5q1UVWgssqMmnuDPygKy+1oJzyesrfRs="
+  }
+}
