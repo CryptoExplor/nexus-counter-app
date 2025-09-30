@@ -249,7 +249,7 @@
         async function loadContractConfig() {
             try {
                 // IMPORTANT: In a real deployment, ensure contract.json is accessible.
-                const response = await fetch('/contract.json'); 
+                const response = await fetch('contract.json'); 
                 if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
                 const data = await response.json();
                 CONTRACT_ADDRESS = data.address;
@@ -260,7 +260,7 @@
                 // but rely on configLoadedSuccessfully=false to stop connection later.
                 CONTRACT_ADDRESS = "0x148Ed472d09565Db0aAa3b4a8c521fCB41d132Fa"; // Generic fake address
                 CONTRACT_ABI = [
-                    "function getCount() view returns (uint256)",
+                    "function Count() view returns (uint256)",
                     "function fee() view returns (uint256)",
                     "function increment() payable",
                     "function decrement() payable",
