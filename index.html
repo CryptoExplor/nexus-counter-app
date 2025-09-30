@@ -230,11 +230,16 @@
           http,
           waitForTransactionReceipt
         } from 'https://esm.sh/@wagmi/core';
-        // Note: Celo imported, but Nexus custom chain is used as per existing app configuration
         import { farcasterMiniApp } from 'https://esm.sh/@farcaster/miniapp-wagmi-connector';
         import { parseEther } from 'https://esm.sh/viem'; 
+        
+        // NEW: WalletConnect Connector Import
+        import { walletConnect } from 'https://esm.sh/@wagmi/connectors'; 
         // --- END WAGMI / VIEM IMPORTS ---
 
+        // --- WalletConnect Configuration ---
+        const WALLETCONNECT_PROJECT_ID = 'e0dd881bad824ac3418617434a79f917';
+        
         // --- Contract Details (loaded from JSON) ---
         let CONTRACT_ADDRESS;
         let CONTRACT_ABI;
@@ -261,7 +266,7 @@
         };
         
         // --- WAGMI CONFIGURATION ---
-        // Create the Wagmi config using the Farcaster Mini App connector and Nexus Testnet
+        // Create the Wagmi config including both Farcaster Mini App and WalletConnect connectors
         const wagmiConfig = createConfig({
             chains: [nexusTestnet],
             connectors: [
@@ -272,6 +277,24 @@
                         url: 'https://nexus-counter.vercel.app', 
                         icons: ['https://nexus-counter.vercel.app/favicon.ico'], 
                     },
+                }),
+                // NEW: WalletConnect Connector for general wallet connection
+                walletConnect({ 
+                    projectId: WALLETCONNECT_PROJECT_ID,
+                    metadata: {
+                        name: 'Nexus Counter',
+                        description: 'A simple dApp on the Nexus network.',
+                        url: 'https://nexus-counter.vercel.app', 
+                        icons: ['https://nexus-counter.vercel.app/favicon.ico'], 
+                    },
+                    // This option automatically shows the WalletConnect modal
+                    showQrModal: true, 
+                    qrModalOptions: {
+                        themeMode: 'dark',
+                        themeVariables: {
+                            '--wcm-z-index': '99999' // Ensure modal is on top
+                        }
+                    }
                 }),
             ],
             transports: {
@@ -317,7 +340,6 @@
         async function loadContractConfig() {
             try {
                 // NOTE: Fetching an external file like 'contract.json' may not work in all limited iframe environments.
-                // Using a direct fetch here, but be aware of possible CORS/security issues in some contexts.
                 const response = await fetch('contract.json'); 
                 if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
                 const data = await response.json();
@@ -413,7 +435,7 @@
             ui.connectBtn.onclick = null;
             // Reset base classes for button
             ui.connectBtn.classList.remove('bg-red-600', 'hover:bg-red-700', 'bg-white', 'hover:bg-gray-200');
-            ui.connectBtn.classList.remove('dark:bg-white', 'dark:hover:bg-gray-200', 'text-black', 'dark:text-black');
+            ui.connectBtn.classList.remove('dark:bg-white', 'dark:hover:bg-gray-200', 'text-black', 'dark:text-black', 'bg-gray-700', 'text-white');
 
             switch (state) {
                 case 'CONNECTED':
@@ -433,7 +455,7 @@
                     break;
                 case 'DISCONNECTED':
                 default:
-                    ui.connectBtn.textContent = 'Connect Wallet';
+                    ui.connectBtn.textContent = isFarcasterMiniApp() ? 'Connect Farcaster Wallet' : 'Connect Wallet (WalletConnect)';
                     // Re-apply the desired light/dark theme styles for the default state
                     ui.connectBtn.classList.add('bg-white', 'hover:bg-gray-200', 'text-black', 'dark:bg-white', 'dark:hover:bg-gray-200', 'dark:text-black');
                     ui.connectBtn.onclick = connectWallet;
@@ -600,19 +622,32 @@
             }
         }
 
-        // --- Core Connection and Contract Setup (Wagmi + Farcaster) ---
+        // --- Core Connection and Contract Setup (Wagmi + Farcaster + WalletConnect) ---
 
         /**
-         * Main function to handle wallet connection using the Farcaster Mini App Connector.
+         * Main function to handle wallet connection. 
+         * Prioritizes Farcaster Mini App if detected, otherwise uses WalletConnect.
          */
         async function connectWallet() {
             if (isConnecting) return;
             isConnecting = true;
             updateConnectButton('LOADING');
             try {
-                // 1. Connect using the Farcaster connector
+                let connectorToUse;
+
+                if (isFarcasterMiniApp()) {
+                    // Prioritize Farcaster if detected
+                    connectorToUse = wagmiConfig.connectors.find(c => c.id === 'farcasterMiniApp');
+                } else {
+                    // Fallback to WalletConnect if outside Farcaster
+                    connectorToUse = wagmiConfig.connectors.find(c => c.id === 'walletConnect');
+                }
+
+                if (!connectorToUse) throw new Error("No suitable connector found.");
+
+                // 1. Connect using the selected connector
                 const { accounts, chainId } = await connect(wagmiConfig, { 
-                    connector: wagmiConfig.connectors.find(c => c.id === 'farcasterMiniApp'),
+                    connector: connectorToUse,
                     chainId: NEXUS_CHAIN_ID_DEC,
                 });
                 
@@ -658,10 +693,13 @@
                      msg = 'Please switch to Nexus Testnet (3940).';
                      buttonState = 'WRONG_NETWORK';
                      statusColor = 'text-red-500';
-                } else if (e.message?.includes('Farcaster')) {
-                    // This error means the connector failed because the environment is missing
-                    msg = 'Farcaster environment missing. Please view this dApp in a Farcaster Mini App.';
+                } else if (e.message?.includes('Farcaster') && isFarcasterMiniApp()) {
+                    // If Farcaster is present but connection failed (e.g., user rejected)
+                    msg = 'Farcaster connection rejected or failed.';
                     statusColor = 'text-red-500';
+                } else if (e.message?.includes('Farcaster') && !isFarcasterMiniApp()) {
+                    // This error means the connector failed because the environment is missing
+                    msg = 'Farcaster environment missing. Using WalletConnect.';
                 } else if (e.message?.includes('User rejected')) {
                     msg = 'Connection rejected by wallet.';
                 }
@@ -704,7 +742,6 @@
         async function updateCount(triggerAnimation = false) {
             ui.counterValue.classList.add("counter-loading");
             try {
-                // *** IMPORTANT CHANGE HERE ***
                 const value = await readContract(wagmiConfig, {
                     address: CONTRACT_ADDRESS,
                     abi: CONTRACT_ABI,
