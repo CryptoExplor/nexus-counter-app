@@ -117,7 +117,6 @@
 
         <!-- Counter Value Display -->
         <div class="text-center my-10">
-            <!-- Tailwind sizing classes (text-7xl, md:text-8xl) removed to allow CSS clamp() to control the size -->
             <p class="font-black counter-glow transition-colors duration-500" id="counter-value">
                 0
             </p>
@@ -190,27 +189,70 @@
         </a>
     </footer>
 
-
-    <script src="https://cdn.jsdelivr.net/npm/ethers@6.7.0/dist/ethers.umd.min.js"></script>
+    <!-- Ethers.js removed, using Viem/Wagmi via module imports -->
     <script type="module">
-        import { sdk } from 'https://esm.sh/@farcaster/miniapp-sdk';
-        import EthereumProvider from 'https://esm.sh/@walletconnect/ethereum-provider';
-        
-        // --- IMPORTANT: CONFIGURE YOUR PROJECT ID ---
-        const WALLETCONNECT_PROJECT_ID = "e0dd881bad824ac3418617434a79f917"; 
-        
+        // --- WAGMI / VIEM IMPORTS ---
+        import {
+          createConfig,
+          connect,
+          writeContract,
+          readContract,
+          getAccount,
+          getChainId,
+          switchChain,
+          http,
+          waitForTransactionReceipt
+        } from 'https://esm.sh/@wagmi/core';
+        // Note: Celo imported, but Nexus custom chain is used as per existing app configuration
+        import { farcasterMiniApp } from 'https://esm.sh/@farcaster/miniapp-wagmi-connector';
+        import { parseEther } from 'https://esm.sh/viem'; 
+        // --- END WAGMI / VIEM IMPORTS ---
+
         // --- Contract Details (loaded from JSON) ---
         let CONTRACT_ADDRESS;
         let CONTRACT_ABI;
-        let configLoadedSuccessfully = false; // New flag
         
         // --- NEXUS TESTNET CONFIGURATION ---
         const NEXUS_CHAIN_ID_DEC = 3940;
-        const NEXUS_CHAIN_ID_HEX = '0xf64';
-        // Note: Replace with your actual RPC URL if this one is rate-limited
         const NEXUS_RPC_URL = 'https://nexus-testnet.g.alchemy.com/v2/d5bxPxUVzMKqbZ2CA4EZi'; 
         const EXPLORER_URL = 'https://testnet3.explorer.nexus.xyz';
         const NATIVE_CURRENCY = { name: 'NEX', symbol: 'NEX', decimals: 18 };
+
+        // Define the Nexus Testnet chain object for Wagmi
+        const nexusTestnet = {
+            id: NEXUS_CHAIN_ID_DEC,
+            name: 'Nexus Testnet',
+            network: 'nexus-testnet',
+            nativeCurrency: NATIVE_CURRENCY,
+            rpcUrls: {
+                default: { http: [NEXUS_RPC_URL] },
+                public: { http: [NEXUS_RPC_URL] },
+            },
+            blockExplorers: {
+                default: { name: 'Nexus Explorer', url: EXPLORER_URL },
+            },
+        };
+        
+        // --- WAGMI CONFIGURATION ---
+        // Create the Wagmi config using the Farcaster Mini App connector and Nexus Testnet
+        const wagmiConfig = createConfig({
+            chains: [nexusTestnet],
+            connectors: [
+                farcasterMiniApp({
+                    metadata: {
+                        name: 'Nexus Counter',
+                        description: 'A simple dApp on the Nexus network.',
+                        url: 'https://nexus-counter.vercel.app', 
+                        icons: ['https://nexus-counter.vercel.app/favicon.ico'], 
+                    },
+                }),
+            ],
+            transports: {
+                [nexusTestnet.id]: http(NEXUS_RPC_URL),
+            },
+        });
+        // --- END WAGMI CONFIGURATION ---
+
 
         // --- UI Element References ---
         const ui = {
@@ -236,44 +278,40 @@
         };
 
         // --- State variables ---
-        let provider, signer, contract, readContract;
         let userAddress = null;
         let isConnecting = false;
-        let currentProviderInstance = null;
         let messageTimeoutId = null;
         let autoRefreshInterval = null;
+        let contractFee = 0n; // Use BigInt for contract values
 
         /**
          * Loads contract address and ABI from contract.json.
          */
         async function loadContractConfig() {
             try {
-                // IMPORTANT: In a real deployment, ensure contract.json is accessible.
                 const response = await fetch('contract.json'); 
                 if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
                 const data = await response.json();
                 CONTRACT_ADDRESS = data.address;
                 CONTRACT_ABI = data.abi;
-                configLoadedSuccessfully = true;
             } catch (error) {
-                // FALLBACK: Use a hardcoded, minimal placeholder ABI if loading failed,
-                // but rely on configLoadedSuccessfully=false to stop connection later.
-                CONTRACT_ADDRESS = "0x148Ed472d09565Db0aAa3b4a8c521fCB41d132Fa"; // Generic fake address
+                // FALLBACK: If contract.json is not available, use placeholders.
+                CONTRACT_ADDRESS = "0x...YourDeployedContractAddress..."; // Placeholder, replace this!
                 CONTRACT_ABI = [
-                    "function Count() view returns (uint256)",
-                    "function fee() view returns (uint256)",
-                    "function increment() payable",
-                    "function decrement() payable",
-                    "function resetCounter(uint256)",
-                    "function owner() view returns (address)", 
-                    "function getUserStats(address) view returns (uint256, uint256, uint256, uint256)",
-                    "function getTopAddresses() view returns (address[])", 
-                    "function getTopCounts() view returns (uint256[])", 
-                ]; 
+                    { name: "getCount", type: "function", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
+                    { name: "fee", type: "function", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
+                    { name: "increment", type: "function", stateMutability: "payable", inputs: [], outputs: [] },
+                    { name: "decrement", type: "function", stateMutability: "payable", inputs: [], outputs: [] },
+                    { name: "resetCounter", type: "function", stateMutability: "nonpayable", inputs: [{ type: "uint256" }], outputs: [] },
+                    { name: "owner", type: "function", stateMutability: "view", inputs: [], outputs: [{ type: "address" }] },
+                    { name: "getUserStats", type: "function", stateMutability: "view", inputs: [{ type: "address" }], outputs: [{ type: "uint256" }, { type: "uint256" }, { type: "uint256" }, { type: "uint256" }] },
+                    { name: "getTopAddresses", type: "function", stateMutability: "view", inputs: [], outputs: [{ type: "address[]" }] },
+                    { name: "getTopCounts", type: "function", stateMutability: "view", inputs: [], outputs: [{ type: "uint256[]" }] },
+                ];
                 
                 if (error.message.includes('HTTP error!')) {
-                    console.error("Could not load contract.json. Using generic placeholder ABI/Address to prevent runtime errors on contract object creation.", error);
-                    displayMessage("Warning: Contract config failed to load. Please ensure 'contract.json' is deployed correctly.", 'error');
+                    console.error("Could not load contract.json. Using placeholder ABI/Address.", error);
+                    displayMessage("Warning: Using placeholder contract config. Please ensure 'contract.json' is deployed.", 'error');
                 } else {
                     console.error("Fatal Error: Could not load contract.json.", error);
                     displayMessage("Could not load contract configuration.", 'error');
@@ -281,26 +319,14 @@
             }
         }
 
-        /**
-         * Creates a singleton instance of the read-only contract.
-         */
-        async function getReadContract() {
-            if (!readContract) {
-                const readProvider = new ethers.JsonRpcProvider(NEXUS_RPC_URL);
-                readContract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, readProvider);
-            }
-            return readContract;
-        }
-
         // --- Smart Auto-Refresh Functions ---
         function startAutoRefresh() {
-            if (autoRefreshInterval) return; // already running
+            if (autoRefreshInterval) return;
             autoRefreshInterval = setInterval(async () => {
-                // Ensure we have a contract instance and user is connected before refreshing
-                if (contract && userAddress) { 
+                if (userAddress) {
                     const prevValue = ui.counterValue.textContent;
                     await updateCount(false);
-                    // Only update badge and leaderboard if counter value changed
+                    // Only update badge and leaderboard if counter value changed or if user is connected
                     if (ui.counterValue.textContent !== "Error" && ui.counterValue.textContent !== prevValue) {
                         await updateBadge();
                         await fetchLeaderboard();
@@ -318,15 +344,9 @@
         }
 
         // --- Utility Functions ---
-        function normalizeChainId(chainId) {
-            if (!chainId) return BigInt(-1);
-            if (typeof chainId === 'bigint') return chainId;
-            if (typeof chainId === 'number') return BigInt(chainId);
-            return BigInt(chainId.toString());
-        }
-
         function isFarcasterMiniApp() {
-            return window?.navigator?.userAgent?.includes("Farcaster") || window?.fcMiniApp !== undefined;
+            // Check if Farcaster context is available
+            return typeof window?.fcMiniApp === 'object' || window?.navigator?.userAgent?.includes("Farcaster");
         }
 
         function formatAddress(addr) {
@@ -345,7 +365,6 @@
         }
 
         function setActionButtonsEnabled(enabled) {
-            // Only enable if userAddress is present (connected) and 'enabled' is true
             const shouldEnable = enabled && !!userAddress; 
             ui.incrementBtn.disabled = !shouldEnable;
             ui.decrementBtn.disabled = !shouldEnable;
@@ -422,7 +441,6 @@
             document.body.appendChild(tempInput);
             tempInput.select();
             try {
-                // document.execCommand('copy') is the fallback method
                 document.execCommand('copy') ? displayMessage('Transaction hash copied!', 'success') : displayMessage('Failed to copy hash.', 'error');
             } catch (err) {
                 displayMessage('Failed to copy hash.', 'error');
@@ -437,16 +455,21 @@
         // --- Feature Functions ---
 
         /**
-         * Toggles the visibility of admin controls by checking the contract's owner.
+         * Fetches the contract owner and updates admin UI based on the connected user.
          */
         async function updateAdminUI() {
-            if (!userAddress || !configLoadedSuccessfully) {
+            if (!userAddress || !CONTRACT_ADDRESS) {
                 ui.adminControls.style.display = "none";
                 return;
             }
             try {
-                const readOnlyContract = await getReadContract();
-                const ownerAddress = await readOnlyContract.owner(); 
+                const ownerAddress = await readContract(wagmiConfig, {
+                    address: CONTRACT_ADDRESS,
+                    abi: CONTRACT_ABI,
+                    functionName: 'owner',
+                    chainId: NEXUS_CHAIN_ID_DEC,
+                });
+                
                 const isOwner = userAddress.toLowerCase() === ownerAddress.toLowerCase();
                 ui.adminControls.style.display = isOwner ? "block" : "none";
             } catch (e) {
@@ -459,14 +482,22 @@
          * Fetches and displays the top 20 users from the contract.
          */
         async function fetchLeaderboard() {
-            if (!configLoadedSuccessfully) return;
-
             try {
-                const readOnlyContract = await getReadContract();
+                const [addresses, counts] = await readContract(wagmiConfig, {
+                    address: CONTRACT_ADDRESS,
+                    abi: CONTRACT_ABI,
+                    functionName: 'getTopAddresses',
+                    chainId: NEXUS_CHAIN_ID_DEC,
+                }).then(async (addresses) => {
+                    const counts = await readContract(wagmiConfig, {
+                        address: CONTRACT_ADDRESS,
+                        abi: CONTRACT_ABI,
+                        functionName: 'getTopCounts',
+                        chainId: NEXUS_CHAIN_ID_DEC,
+                    });
+                    return [addresses, counts];
+                });
                 
-                // CRITICAL FIX: Calling separate contract functions
-                const addresses = await readOnlyContract.getTopAddresses();
-                const counts = await readOnlyContract.getTopCounts();
 
                 ui.leaderboardList.innerHTML = "";
                 
@@ -474,11 +505,10 @@
                     ui.leaderboardList.innerHTML = `<p class="text-sm text-gray-500 text-center">No entries yet.</p>`;
                 } else {
                     for (let i = 0; i < addresses.length; i++) {
-                        // Dynamically format list items
                         const isCurrentUser = userAddress && addresses[i].toLowerCase() === userAddress.toLowerCase();
                         const rowClass = isCurrentUser 
-                            ? 'bg-indigo-100 dark:bg-indigo-900 ring-2 ring-indigo-500' // Highlight current user
-                            : i % 2 === 0 ? 'bg-white dark:bg-gray-900' : 'app-subtle-box'; // Alternate subtle background
+                            ? 'bg-indigo-100 dark:bg-indigo-900 ring-2 ring-indigo-500' 
+                            : i % 2 === 0 ? 'bg-white dark:bg-gray-900' : 'app-subtle-box'; 
                         
                         ui.leaderboardList.innerHTML += `<div class="flex justify-between items-center text-sm p-3 rounded-md transition-colors duration-200 ${rowClass}">
                             <span class="font-mono text-sm">${i + 1}. ${formatAddress(addresses[i])}</span>
@@ -487,31 +517,32 @@
                     }
                 }
                 ui.leaderboardContainer.style.display = "block";
-                
-                // Note: Since getUserRank() is not exposed, we only show the leaderboard list. 
                 ui.userRank.textContent = "";
 
             } catch (e) {
                 console.error("Leaderboard error:", e);
-                // Only hide if the error is severe, otherwise keep the container visible
-                if (e.message?.includes('call revert exception')) {
-                     ui.leaderboardContainer.style.display = "none";
-                }
+                ui.leaderboardContainer.style.display = "none";
             }
         }
         
         /**
-         * Fetches user stats and updates the badge tier display using the tier value (index 3).
+         * Fetches user stats and updates the badge tier display.
          */
         async function updateBadge() {
-            if (!userAddress || !configLoadedSuccessfully) {
+            if (!userAddress || !CONTRACT_ADDRESS) {
                 ui.badgeTierContainer.classList.add('hidden');
                 return;
             }
             try {
-                const readOnlyContract = await getReadContract();
-                // Call getUserStats which returns (increments, decrements, lastAction, tier)
-                const stats = await readOnlyContract.getUserStats(userAddress);
+                // Call getUserStats which returns [increments, decrements, lastAction, tier]
+                const stats = await readContract(wagmiConfig, {
+                    address: CONTRACT_ADDRESS,
+                    abi: CONTRACT_ABI,
+                    functionName: 'getUserStats',
+                    args: [userAddress],
+                    chainId: NEXUS_CHAIN_ID_DEC,
+                });
+
                 const tierValue = Number(stats[3]); // tier is the 4th element (index 3)
                 
                 let tierText = "No Badge";
@@ -526,7 +557,6 @@
                 
                 ui.badgeTier.textContent = tierText;
                 
-                // Show container if tier is greater than 0
                 tierValue > 0
                     ? ui.badgeTierContainer.classList.remove('hidden')
                     : ui.badgeTierContainer.classList.add('hidden');
@@ -537,140 +567,119 @@
             }
         }
 
-        // --- Core Connection and Contract Setup ---
-        async function initProvider() {
-            if (isFarcasterMiniApp()) {
-                sdk.actions.ready({ disableNativeGestures: true });
-                if (!sdk.ethereum) throw new Error("Farcaster SDK Ethereum provider not available.");
-                currentProviderInstance = sdk.ethereum;
-            } else {
-                if (WALLETCONNECT_PROJECT_ID.includes("YOUR_WALLETCONNECT_PROJECT_ID")) {
-                     displayMessage('ERROR: WalletConnect Project ID is required.', 'error');
-                     throw new new Error("Missing WalletConnect Project ID");
+        // --- Core Connection and Contract Setup (Wagmi + Farcaster) ---
+
+        /**
+         * Main function to handle wallet connection using the Farcaster Mini App Connector.
+         */
+        async function connectWallet() {
+            if (isConnecting) return;
+            isConnecting = true;
+            updateConnectButton('LOADING');
+            try {
+                if (!isFarcasterMiniApp()) {
+                     throw new Error("This dApp must be run within a Farcaster Mini App environment.");
                 }
-                const wcProvider = await EthereumProvider.init({
-                    projectId: WALLETCONNECT_PROJECT_ID,
-                    chains: [NEXUS_CHAIN_ID_DEC], 
-                    showQrModal: true,
-                    rpc: { [NEXUS_CHAIN_ID_DEC]: NEXUS_RPC_URL }
+
+                // 1. Connect using the Farcaster connector
+                const { accounts, chainId } = await connect(wagmiConfig, { 
+                    connector: wagmiConfig.connectors.find(c => c.id === 'farcasterMiniApp'),
+                    chainId: NEXUS_CHAIN_ID_DEC,
                 });
                 
-                // Event listeners for WalletConnect provider
-                wcProvider.on("accountsChanged", async (accounts) => {
-                    // This handles wallet changes without full reload
-                    if (accounts.length > 0) await connectWallet(true); else window.location.reload(); 
-                });
-                wcProvider.on("chainChanged", async (chainId) => {
-                    if (normalizeChainId(chainId) !== normalizeChainId(NEXUS_CHAIN_ID_DEC)) {
-                        setStatus('Wrong Network', 'text-red-500');
-                        updateConnectButton('WRONG_NETWORK');
-                        setActionButtonsEnabled(false);
-                        stopAutoRefresh();
-                    } else {
-                        // Re-initialize provider on correct chain change
-                        await connectWallet(true); 
-                    }
-                });
-                wcProvider.on("disconnect", () => {
-                    // Force a reload on disconnect for a clean state
-                    stopAutoRefresh();
-                    window.location.reload();
-                });
+                userAddress = accounts[0];
+                const currentChainId = getChainId(wagmiConfig);
 
-                // Attempt to connect immediately. This is the part that opens the QR code.
-                await wcProvider.connect();
-                currentProviderInstance = wcProvider;
-            }
-
-            // After a successful connection/provider setup:
-            provider = new ethers.BrowserProvider(currentProviderInstance);
-            signer = await provider.getSigner();
-            contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
-            userAddress = await signer.getAddress();
-            
-            const network = await provider.getNetwork();
-            if (normalizeChainId(network.chainId) !== normalizeChainId(NEXUS_CHAIN_ID_DEC)) {
-                throw new Error('Wrong Network: ' + network.chainId.toString(10));
-            }
-
-            // Everything succeeded, update UI and start operations
-            ui.userMeta.textContent = formatAddress(userAddress);
-            setStatus('Connected to Nexus Testnet', 'text-green-600');
-            updateConnectButton('CONNECTED');
-            setActionButtonsEnabled(true);
-            
-            await updateCount(true);
-            await updateBadge();
-            await updateAdminUI(); 
-            fetchLeaderboard(); 
-            startAutoRefresh();
-        }
-
-        async function switchToNexus() {
-            if (isConnecting || !currentProviderInstance) return;
-            isConnecting = true;
-            updateConnectButton('LOADING');
-            try {
-                await currentProviderInstance.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: NEXUS_CHAIN_ID_HEX }] });
-                await connectWallet(true); // Force re-init after switch
-            } catch (error) {
-                if (error.code === 4902) {
-                    try {
-                        await currentProviderInstance.request({ method: 'wallet_addEthereumChain', params: [{ chainId: NEXUS_CHAIN_ID_HEX, chainName: 'Nexus Testnet', rpcUrls: [NEXUS_RPC_URL], blockExplorerUrls: [EXPLORER_URL], nativeCurrency: NATIVE_CURRENCY }] });
-                        await connectWallet(true);
-                    } catch (addError) {
-                        displayMessage('Failed to add Nexus Testnet.', 'error');
-                    }
-                } else {
-                    displayMessage(error.code === 4001 ? "Network switch rejected." : "Failed to switch networks.", 'error');
+                // 2. Check if the user is on the correct network
+                if (currentChainId !== NEXUS_CHAIN_ID_DEC) {
+                    throw new Error('Wrong Network');
                 }
-                updateConnectButton('WRONG_NETWORK');
-            } finally { isConnecting = false; }
-        }
 
-        async function connectWallet(isRetry = false) {
-            if (isConnecting && !isRetry) return;
-            isConnecting = true;
-            updateConnectButton('LOADING');
-            
-            // Critical check: Stop connection if config isn't loaded
-            if (!configLoadedSuccessfully) {
-                displayMessage("Configuration Missing: Please deploy 'contract.json' and refresh.", 'error');
-                isConnecting = false;
-                // Re-run window.onload logic to ensure UI state is correct for disconnected/failed config
-                await window.onload(); 
-                return;
-            }
+                // 3. Connection successful
+                ui.userMeta.textContent = formatAddress(userAddress);
+                setStatus('Connected to Nexus Testnet', 'text-green-600');
+                updateConnectButton('CONNECTED');
+                setActionButtonsEnabled(true);
+                
+                // Fetch contract fee (viem returns BigInt)
+                contractFee = await readContract(wagmiConfig, {
+                    address: CONTRACT_ADDRESS,
+                    abi: CONTRACT_ABI,
+                    functionName: 'fee',
+                    chainId: NEXUS_CHAIN_ID_DEC,
+                });
 
-            try {
-                await initProvider();
+                // Update UI data
+                await updateCount(true);
+                await updateBadge();
+                await updateAdminUI();
+                fetchLeaderboard();
+                startAutoRefresh();
+
             } catch (e) {
                 console.error("Connection failed:", e);
                 userAddress = null;
                 ui.userMeta.textContent = 'Not Connected';
+
+                let msg = 'Connection failed.';
+                let buttonState = 'DISCONNECTED';
+                let statusColor = 'text-gray-500';
+
                 if (e.message?.includes('Wrong Network')) {
-                     setStatus('Wrong Network', 'text-red-500');
-                     updateConnectButton('WRONG_NETWORK');
-                } else {
-                    const msg = e.message?.includes('rejected') || e.message?.includes('closed') ? 'Connection rejected.' : 'Connection failed.';
-                    displayMessage(msg, 'error');
-                    setStatus('Disconnected', 'text-gray-500');
-                    updateConnectButton('DISCONNECTED');
+                     msg = 'Please switch to Nexus Testnet (3940).';
+                     buttonState = 'WRONG_NETWORK';
+                     statusColor = 'text-red-500';
+                } else if (e.message?.includes('Farcaster')) {
+                    msg = 'This dApp requires the Farcaster Mini App environment.';
+                    statusColor = 'text-red-500';
+                } else if (e.message?.includes('User rejected')) {
+                    msg = 'Connection rejected by wallet.';
                 }
+
+                displayMessage(msg, 'error');
+                setStatus('Disconnected', statusColor);
+                updateConnectButton(buttonState);
                 setActionButtonsEnabled(false);
-            } finally { isConnecting = false; }
+            } finally { 
+                isConnecting = false; 
+            }
         }
 
-        async function updateCount(triggerAnimation = false) {
-            if (!configLoadedSuccessfully) {
-                ui.counterValue.textContent = "Config Error";
-                return;
+        /**
+         * Attempts to switch the network using Wagmi.
+         */
+        async function switchToNexus() {
+            if (isConnecting) return;
+            isConnecting = true;
+            updateConnectButton('LOADING');
+            try {
+                await switchChain(wagmiConfig, { chainId: NEXUS_CHAIN_ID_DEC });
+                // If successful, re-attempt connection
+                await connectWallet(); 
+            } catch (error) {
+                const msg = error.message?.includes('rejected') 
+                    ? "Network switch rejected by user." 
+                    : "Failed to switch networks.";
+                displayMessage(msg, 'error');
+                updateConnectButton('WRONG_NETWORK');
+            } finally { 
+                isConnecting = false; 
             }
+        }
 
+        /**
+         * Reads the contract count value.
+         */
+        async function updateCount(triggerAnimation = false) {
             ui.counterValue.classList.add("counter-loading");
             try {
-                const contract = await getReadContract();
-                const value = await contract.getCount();
+                const value = await readContract(wagmiConfig, {
+                    address: CONTRACT_ADDRESS,
+                    abi: CONTRACT_ABI,
+                    functionName: 'getCount',
+                    chainId: NEXUS_CHAIN_ID_DEC,
+                });
+                
                 const newValue = value.toString();
                 if (ui.counterValue.textContent !== newValue && triggerAnimation) {
                     ui.counterValue.classList.add("counter-updated");
@@ -678,10 +687,9 @@
                 }
                 ui.counterValue.textContent = newValue;
             } catch (e) {
-                // More helpful error message for the user based on the screenshot
                 ui.counterValue.textContent = "Error";
                 console.error("Read count error:", e);
-                if (triggerAnimation) displayMessage("Failed to read counter value. Check contract address/ABI.", 'error');
+                if (triggerAnimation) displayMessage("Failed to read counter value.", 'error');
             } finally {
                 ui.counterValue.classList.remove("counter-loading");
             }
@@ -691,49 +699,56 @@
          * Sends a transaction to increment or decrement the counter.
          */
         async function sendTransaction(methodName, buttonElement, originalText) {
-            if (!contract || buttonElement.disabled || !configLoadedSuccessfully) return;
+            if (!userAddress || buttonElement.disabled) return;
             setActionButtonsEnabled(false);
             addSpinner(buttonElement, originalText);
             setStatus('Awaiting Signature...', 'text-yellow-600');
             ui.messageContainer.classList.add('hidden'); 
+            
+            let hash;
+
             try {
-                // 1. Fetch the exact required fee from the contract
-                const readOnlyContract = await getReadContract();
-                const fee = await readOnlyContract.fee();
-                
-                // 2. Send the transaction, including the fee in the 'value' field
-                const tx = await contract[methodName]({ value: fee });
-                
+                // 1. Prepare and send the transaction
+                const { hash: writeHash } = await writeContract(wagmiConfig, {
+                    address: CONTRACT_ADDRESS,
+                    abi: CONTRACT_ABI,
+                    functionName: methodName,
+                    value: contractFee, // Use the fetched fee for payable function
+                    chainId: NEXUS_CHAIN_ID_DEC,
+                });
+                hash = writeHash;
+
                 buttonElement.textContent = 'Waiting for Tx...';
                 setStatus('Transaction sent, waiting for mining...', 'text-orange-600');
-                const receipt = await tx.wait();
-                if (receipt && receipt.status === 1) {
-                    displayMessage('Transaction successful!', 'success', tx.hash);
+                
+                // 2. Wait for the transaction receipt
+                const receipt = await waitForTransactionReceipt(wagmiConfig, { hash, chainId: NEXUS_CHAIN_ID_DEC });
+                
+                if (receipt.status === 'success') {
+                    displayMessage('Transaction successful!', 'success', hash);
                     setStatus('Connected to Nexus Testnet', 'text-green-600');
                     await updateCount(true); 
                     await updateBadge();
                     await fetchLeaderboard();
                 } else {
-                    displayMessage('Transaction failed on the blockchain.', 'error', tx.hash);
+                    displayMessage('Transaction failed on the blockchain (Status: Reverted).', 'error', hash);
                 }
             } catch (e) {
-                // Extract reason, error code, or message
-                const reason = e.reason || e.code || e.message || 'Transaction failed.';
-                let displayReason = reason;
-
-                // CRITICAL FIX: Handle the specific timeLocked() revert message
-                if (reason.includes("Action locked: wait")) {
-                    displayReason = "Action blocked: Please wait 1 hour between actions (cooldown enforced by contract).";
-                } else if (reason.includes('already zero')) {
-                    displayReason = "Decrement failed: Counter is already zero.";
-                } else if (reason.includes('rejected') || reason === 'ACTION_REJECTED') {
+                console.error("Transaction Error:", e);
+                let displayReason = 'Transaction failed.';
+                
+                if (e.message?.includes('User rejected')) {
                     displayReason = 'Transaction rejected by wallet.';
+                } else if (e.message?.includes('Action locked: wait')) {
+                    displayReason = "Action blocked: Please wait 1 hour between actions (cooldown enforced by contract).";
+                } else if (e.message?.includes('already zero')) {
+                    displayReason = "Decrement failed: Counter is already zero.";
                 } else {
-                     // For general errors, just show the core message
-                    displayReason = displayReason.split('(')[0].trim();
+                    // Fallback to showing a generic error or the first line of the message
+                    displayReason = e.message.split('\n')[0].trim() || 'Transaction failed unexpectedly.';
                 }
 
-                displayMessage(displayReason, 'error');
+                displayMessage(displayReason, 'error', hash);
 
                 if (userAddress) setStatus('Connected to Nexus Testnet', 'text-green-600');
             } finally {
@@ -753,58 +768,60 @@
 
         // --- Admin Reset Button Handler ---
         ui.resetBtn.onclick = async () => {
-            if (!configLoadedSuccessfully) return;
-
-            // Note: We don't need to check for admin status here as the contract will revert if msg.sender is not the owner
             const newValueStr = prompt("Enter new counter value:");
             if (newValueStr !== null) {
                 const newValue = Number(newValueStr);
-                if (!isNaN(newValue) && Number.isInteger(newValue)) {
+                if (!isNaN(newValue) && Number.isInteger(newValue) && newValue >= 0) {
+                    let hash;
                     try {
-                        const tx = await contract.resetCounter(newValue);
+                        // 1. Prepare and send the transaction
+                        const { hash: writeHash } = await writeContract(wagmiConfig, {
+                            address: CONTRACT_ADDRESS,
+                            abi: CONTRACT_ABI,
+                            functionName: 'resetCounter',
+                            args: [BigInt(newValue)], // Pass as BigInt
+                            chainId: NEXUS_CHAIN_ID_DEC,
+                        });
+                        hash = writeHash;
+
                         displayMessage("Resetting counter...", "info");
-                        await tx.wait();
-                        displayMessage("Counter reset successfully!", "success");
+                        
+                        // 2. Wait for the transaction receipt
+                        await waitForTransactionReceipt(wagmiConfig, { hash, chainId: NEXUS_CHAIN_ID_DEC });
+                        
+                        displayMessage("Counter reset successfully!", "success", hash);
                         await updateCount(true);
                         await fetchLeaderboard();
                     } catch (e) {
-                        const reason = e.reason || e.message || 'Reset failed.';
-                        // User-friendly error message for onlyOwner check
-                        const displayReason = reason.includes('Ownable') ? 'Reset failed: Only the contract owner can call this function.' : reason;
-                        displayMessage("Reset failed: " + displayReason, "error");
+                         const reason = e.message || 'Reset failed.';
+                         const displayReason = reason.includes('Owner') ? 'Reset failed: Only the contract owner can call this function.' : reason;
+                         displayMessage("Reset failed: " + displayReason, "error", hash);
                     }
                 } else {
-                    displayMessage("Invalid input. Please enter a whole number.", "error");
+                    displayMessage("Invalid input. Please enter a non-negative whole number.", "error");
                 }
             }
         };
         // --- End Admin Reset Button Handler ---
 
         window.onload = async () => {
-            // First, try to load configuration
             await loadContractConfig();
-            
-            // Check if loading failed or the placeholder address is still used
-            if (!configLoadedSuccessfully) {
-                // If config fails, prevent connection and show error
-                setStatus('Config Error: Missing contract.json', 'text-red-500');
-                ui.counterValue.textContent = "Config Error";
+            if (!CONTRACT_ADDRESS || CONTRACT_ADDRESS.includes("YourDeployedContractAddress")) {
+                setStatus('Config Load Failed (Update Address)', 'text-red-500');
                 updateConnectButton('DISCONNECTED');
                 ui.connectBtn.disabled = true;
-                setActionButtonsEnabled(false);
                 return;
             }
-            
-            // Initial read of the counter (will be '0' or the actual count if successful)
-            await getCount(false);
-            
-            // Fetch leaderboard on initial load (optional, but good if contract is live)
-            fetchLeaderboard(); 
-            
-            // If we successfully loaded config, prepare to connect
+            await updateCount(false);
+            fetchLeaderboard();
             setStatus('Ready to connect', 'text-gray-500');
             updateConnectButton('DISCONNECTED');
             setActionButtonsEnabled(false);
+            
+            // Auto-attempt connection if it looks like a Farcaster environment
+            if (isFarcasterMiniApp()) {
+                connectWallet();
+            }
         }
     </script>
 </body>
