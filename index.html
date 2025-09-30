@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -68,6 +67,13 @@
             background-color: var(--subtle-bg);
         }
 
+        /* --- Custom Counter Scaling --- */
+        #counter-value {
+          word-break: break-word;
+          /* Responsive scaling: Min 3rem, Fluid 10vw, Max 6rem */
+          font-size: clamp(3rem, 10vw, 6rem); 
+        }
+
         /* Counter Pulse Animation */
         @keyframes pulse {
             0% { transform: scale(1); opacity: 1; }
@@ -111,7 +117,8 @@
 
         <!-- Counter Value Display -->
         <div class="text-center my-10">
-            <p class="text-7xl md:text-8xl font-black counter-glow transition-colors duration-500" id="counter-value">
+            <!-- Tailwind sizing classes (text-7xl, md:text-8xl) removed to allow CSS clamp() to control the size -->
+            <p class="font-black counter-glow transition-colors duration-500" id="counter-value">
                 0
             </p>
             <p class="text-xs mt-2" style="color: var(--subtle-text);">Current contract value</p>
@@ -139,11 +146,25 @@
                     Increment
                 </button>
             </div>
-            
+        </div>
+
+        <!-- Admin Controls -->
+        <div id="admin-controls" class="hidden p-4 border rounded-xl bg-gray-50 dark:bg-gray-800 mt-6">
+            <h2 class="text-lg font-semibold mb-2 text-center text-red-600 dark:text-red-400">Admin Controls (Owner Only)</h2>
+            <button id="reset-btn" class="w-full px-4 py-3 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700 transition duration-300">Reset Counter</button>
+        </div>
+
+        <!-- Leaderboard -->
+        <div id="leaderboard-container" class="hidden mt-6 p-4 border border-gray-200 dark:border-gray-700 rounded-xl app-subtle-box">
+            <h2 class="text-lg font-semibold mb-3 text-center">Top 20 Leaderboard</h2>
+            <!-- Leaderboard List -->
+            <div id="leaderboard-list" class="space-y-1"></div>
+            <!-- User Rank Display -->
+            <div id="user-rank" class="mt-4 text-center text-sm font-semibold text-indigo-600 dark:text-indigo-400"></div>
         </div>
 
         <!-- Message/Error Display (hidden initially) -->
-        <div id="message-container" class="mt-6 p-3 rounded-lg text-center hidden">
+        <div id="message-container" class="mt-6 p-3 rounded-xl text-center hidden">
             <div id="message-text" class="font-medium"></div>
             <div id="tx-details" class="mt-2 text-sm flex justify-center items-center gap-2 hidden">
                 <a id="tx-link" target="_blank" rel="noopener noreferrer" class="font-mono text-indigo-600 dark:text-indigo-400 hover:underline"></a>
@@ -160,12 +181,12 @@
     </div>
 
     <!-- Footer -->
-    <footer class="absolute bottom-0 left-0 right-0 flex justify-center gap-6 py-4">
+    <footer class="absolute bottom-0 left-0 right-0 flex justify-center gap-6 py-4" style="color: var(--subtle-text);">
         <a href="https://farcaster.xyz/dare1.eth" target="_blank" aria-label="Farcaster">
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path d="M12 2C6.486 2 2 6.486 2 12s4.486 10 10 10 10-4.486 10-10S17.514 2 12 2zm0 18c-4.411 0-8-3.589-8-8s3.589-8 8-8 8 3.589 8 8-3.589 8-8 8z"/><path d="M12 7c-2.757 0-5 2.243-5 5s2.243 5 5 5 5-2.243 5-5-2.243-5-5-5zm0 8c-1.654 0-3-1.346-3-3s1.346-3 3-3 3 1.346 3 3-1.346 3-3 3z"/></svg>
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.486 2 2 6.486 2 12s4.486 10 10 10 10-4.486 10-10S17.514 2 12 2zm0 18c-4.411 0-8-3.589-8-8s3.589-8 8-8 8 3.589 8 8-3.589 8-8 8z"/><path d="M12 7c-2.757 0-5 2.243-5 5s2.243 5 5 5 5-2.243 5-5-2.243-5-5-5zm0 8c-1.654 0-3-1.346-3-3s1.346-3 3-3 3 1.346 3 3-1.346 3-3 3z"/></svg>
         </a>
         <a href="https://x.com/kumar14700" target="_blank" aria-label="Twitter">
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 16 16"><path d="M12.6.75h2.454l-5.36 6.142L16 15.25h-4.937l-3.867-5.07-4.425 5.07H.316l5.733-6.57L0 .75h5.063l3.495 4.633L12.601.75Zm-.86 13.028h1.36L4.323 2.145H2.865l8.875 11.633Z"/></svg>
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 16 16" fill="currentColor"><path d="M12.6.75h2.454l-5.36 6.142L16 15.25h-4.937l-3.867-5.07-4.425 5.07H.316l5.733-6.57L0 .75h5.063l3.495 4.633L12.601.75Zm-.86 13.028h1.36L4.323 2.145H2.865l8.875 11.633Z"/></svg>
         </a>
     </footer>
 
@@ -185,7 +206,8 @@
         // --- NEXUS TESTNET CONFIGURATION ---
         const NEXUS_CHAIN_ID_DEC = 3940;
         const NEXUS_CHAIN_ID_HEX = '0xf64';
-        const NEXUS_RPC_URL = 'https://nexus-testnet.g.alchemy.com/v2/d5bxPxUVzMKqbZ2CA4EZi';
+        // Note: Replace with your actual RPC URL if this one is rate-limited
+        const NEXUS_RPC_URL = 'https://nexus-testnet.g.alchemy.com/v2/d5bxPxUVzMKqbZ2CA4EZi'; 
         const EXPLORER_URL = 'https://testnet3.explorer.nexus.xyz';
         const NATIVE_CURRENCY = { name: 'NEX', symbol: 'NEX', decimals: 18 };
 
@@ -205,6 +227,11 @@
             txLink: document.getElementById('tx-link'),
             copyBtn: document.getElementById('copy-btn'),
             statusMeta: document.getElementById('status-meta'),
+            adminControls: document.getElementById('admin-controls'),
+            resetBtn: document.getElementById('reset-btn'),
+            leaderboardContainer: document.getElementById('leaderboard-container'),
+            leaderboardList: document.getElementById('leaderboard-list'),
+            userRank: document.getElementById('user-rank'),
         };
 
         // --- State variables ---
@@ -220,14 +247,35 @@
          */
         async function loadContractConfig() {
             try {
-                const response = await fetch('contract.json');
+                // NOTE: This assumes 'contract.json' is available locally or at the root.
+                // Replace this block with your actual deployed contract address and ABI if not using contract.json
+                const response = await fetch('contract.json'); 
                 if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
                 const data = await response.json();
                 CONTRACT_ADDRESS = data.address;
                 CONTRACT_ABI = data.abi;
             } catch (error) {
-                console.error("Fatal Error: Could not load contract.json.", error);
-                displayMessage("Could not load contract configuration.", 'error');
+                // FALLBACK: If contract.json is not available, use placeholders.
+                CONTRACT_ADDRESS = "0x...YourDeployedContractAddress..."; // Placeholder, replace this!
+                CONTRACT_ABI = [
+                    "function getCount() view returns (uint256)",
+                    "function fee() view returns (uint256)",
+                    "function increment() payable",
+                    "function decrement() payable",
+                    "function resetCounter(uint256)",
+                    "function owner() view returns (address)", // Added OpenZeppelin owner getter
+                    "function getUserStats(address) view returns (uint256, uint256, uint256, uint256)",
+                    "function getTopAddresses() view returns (address[])", // Added for Leaderboard
+                    "function getTopCounts() view returns (uint256[])", // Added for Leaderboard
+                ]; 
+                
+                if (error.message.includes('HTTP error!')) {
+                    console.error("Could not load contract.json. Using placeholder ABI/Address.", error);
+                    displayMessage("Warning: Using placeholder contract config. Please ensure 'contract.json' is deployed.", 'error');
+                } else {
+                    console.error("Fatal Error: Could not load contract.json.", error);
+                    displayMessage("Could not load contract configuration.", 'error');
+                }
             }
         }
 
@@ -249,10 +297,13 @@
                 if (userAddress && contract) {
                     const prevValue = ui.counterValue.textContent;
                     await updateCount(false);
-                    // Only update badge if the count has changed, to save a read call
+                    // Only update badge and leaderboard if counter value changed or if user is connected
                     if (ui.counterValue.textContent !== "Error" && ui.counterValue.textContent !== prevValue) {
                         await updateBadge();
+                        await fetchLeaderboard();
                     }
+                    // Always re-check admin status and cooldown time (optional, but good for UX)
+                    updateAdminUI(); 
                 }
             }, 5000); // refresh every 5 seconds
         }
@@ -286,14 +337,18 @@
         
         function setStatus(text, colorClass) {
             ui.statusMeta.textContent = text;
+            // Remove existing color classes
             ui.statusMeta.className = ui.statusMeta.className.split(' ').filter(c => !c.startsWith('text-')).join(' ');
             ui.statusMeta.classList.add(colorClass);
         }
 
         function setActionButtonsEnabled(enabled) {
-            ui.incrementBtn.disabled = !enabled;
-            ui.decrementBtn.disabled = !enabled;
-            if (enabled) {
+            // Only enable if userAddress is present (connected) and 'enabled' is true
+            const shouldEnable = enabled && !!userAddress; 
+            ui.incrementBtn.disabled = !shouldEnable;
+            ui.decrementBtn.disabled = !shouldEnable;
+            
+            if (shouldEnable) {
                 ui.incDecGroup.classList.remove('hidden');
                 ui.incDecGroup.classList.add('flex');
             } else {
@@ -365,6 +420,7 @@
             document.body.appendChild(tempInput);
             tempInput.select();
             try {
+                // document.execCommand('copy') is the fallback method
                 document.execCommand('copy') ? displayMessage('Transaction hash copied!', 'success') : displayMessage('Failed to copy hash.', 'error');
             } catch (err) {
                 displayMessage('Failed to copy hash.', 'error');
@@ -375,25 +431,104 @@
         function addSpinner(buttonElement, originalText) {
             buttonElement.innerHTML = `<svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-white inline" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>${originalText}...`;
         }
+        
+        // --- Feature Functions ---
 
         /**
-         * Fetches and updates the user's badge tier.
+         * Toggles the visibility of admin controls by checking the contract's owner.
+         * FIX: Fetches the owner from the contract's public 'owner()' function.
+         */
+        async function updateAdminUI() {
+            if (!userAddress) {
+                ui.adminControls.style.display = "none";
+                return;
+            }
+            try {
+                const readOnlyContract = await getReadContract();
+                const ownerAddress = await readOnlyContract.owner(); 
+                const isOwner = userAddress.toLowerCase() === ownerAddress.toLowerCase();
+                ui.adminControls.style.display = isOwner ? "block" : "none";
+            } catch (e) {
+                console.error("Failed to check owner status:", e);
+                ui.adminControls.style.display = "none";
+            }
+        }
+
+        /**
+         * Fetches and displays the top 20 users from the contract.
+         * FIX: Now calls getTopAddresses() and getTopCounts() separately.
+         */
+        async function fetchLeaderboard() {
+            try {
+                const readOnlyContract = await getReadContract();
+                
+                // CRITICAL FIX: Calling separate contract functions
+                const addresses = await readOnlyContract.getTopAddresses();
+                const counts = await readOnlyContract.getTopCounts();
+
+                ui.leaderboardList.innerHTML = "";
+                
+                if(addresses.length === 0){
+                    ui.leaderboardList.innerHTML = `<p class="text-sm text-gray-500 text-center">No entries yet.</p>`;
+                } else {
+                    for (let i = 0; i < addresses.length; i++) {
+                        // Dynamically format list items
+                        const isCurrentUser = userAddress && addresses[i].toLowerCase() === userAddress.toLowerCase();
+                        const rowClass = isCurrentUser 
+                            ? 'bg-indigo-100 dark:bg-indigo-900 ring-2 ring-indigo-500' // Highlight current user
+                            : i % 2 === 0 ? 'bg-white dark:bg-gray-900' : 'app-subtle-box'; // Alternate subtle background
+                        
+                        ui.leaderboardList.innerHTML += `<div class="flex justify-between items-center text-sm p-3 rounded-md transition-colors duration-200 ${rowClass}">
+                            <span class="font-mono text-sm">${i + 1}. ${formatAddress(addresses[i])}</span>
+                            <span class="font-bold text-lg">${counts[i].toString()}</span>
+                        </div>`;
+                    }
+                }
+                ui.leaderboardContainer.style.display = "block";
+                
+                // Note: Since getUserRank() is not exposed, we only show the leaderboard list. 
+                ui.userRank.textContent = "";
+
+            } catch (e) {
+                console.error("Leaderboard error:", e);
+                // Only hide if the error is severe, otherwise keep the container visible
+                if (e.message?.includes('call revert exception')) {
+                     ui.leaderboardContainer.style.display = "none";
+                }
+            }
+        }
+        
+        /**
+         * Fetches user stats and updates the badge tier display using the tier value (index 3).
          */
         async function updateBadge() {
-            if (!contract || !userAddress) {
+            if (!userAddress) {
                 ui.badgeTierContainer.classList.add('hidden');
                 return;
             }
             try {
-                const tier = await contract.getBadgeTier(userAddress);
-                const tierValue = Number(tier); // Convert BigInt to Number
+                const readOnlyContract = await getReadContract();
+                // Call getUserStats which returns (increments, decrements, lastAction, tier)
+                const stats = await readOnlyContract.getUserStats(userAddress);
+                const tierValue = Number(stats[3]); // tier is the 4th element (index 3)
+                
                 let tierText = "No Badge";
-                if (tierValue >= 1000) tierText = "🌟 Nexus Overlord (1000+)";
-                else if (tierValue >= 500) tierText = "⚔️ Nexus Knight (500+)";
-                else if (tierValue >= 250) tierText = "🧙 Nexus Adept (250+)";
-                else if (tierValue >= 100) tierText = "📜 Nexus Apprentice (100+)";
+                // Contract Tiers: 1:Bronze(10), 2:Silver(25), 3:Gold(50), 4:Platinum(100), 5:Diamond(250), 6:Master(500), 7:Legendary(1000)
+                if (tierValue === 7) tierText = "🌟 Legendary Badge (1000+ Actions)";
+                else if (tierValue === 6) tierText = "💎 Master Badge (500+ Actions)";
+                else if (tierValue === 5) tierText = "🔷 Diamond Badge (250+ Actions)";
+                else if (tierValue === 4) tierText = "🪙 Platinum Badge (100+ Actions)";
+                else if (tierValue === 3) tierText = "🥇 Gold Badge (50+ Actions)";
+                else if (tierValue === 2) tierText = "🥈 Silver Badge (25+ Actions)";
+                else if (tierValue === 1) tierText = "🥉 Bronze Badge (10+ Actions)";
+                
                 ui.badgeTier.textContent = tierText;
-                tierText !== "No Badge" ? ui.badgeTierContainer.classList.remove('hidden') : ui.badgeTierContainer.classList.add('hidden');
+                
+                // Show container if tier is greater than 0
+                tierValue > 0
+                    ? ui.badgeTierContainer.classList.remove('hidden')
+                    : ui.badgeTierContainer.classList.add('hidden');
+
             } catch (e) {
                 console.error("Failed to fetch badge tier:", e);
                 ui.badgeTierContainer.classList.add('hidden');
@@ -407,7 +542,7 @@
                 if (!sdk.ethereum) throw new Error("Farcaster SDK Ethereum provider not available.");
                 currentProviderInstance = sdk.ethereum;
             } else {
-                if (WALLETCONNECT_PROJECT_ID === "YOUR_WALLETCONNECT_PROJECT_ID") {
+                if (WALLETCONNECT_PROJECT_ID.includes("YOUR_WALLETCONNECT_PROJECT_ID")) {
                      displayMessage('ERROR: WalletConnect Project ID is required.', 'error');
                      throw new Error("Missing WalletConnect Project ID");
                 }
@@ -418,10 +553,9 @@
                     rpc: { [NEXUS_CHAIN_ID_DEC]: NEXUS_RPC_URL }
                 });
                 
-                // Smoothly handle account and chain changes without reloading the page
+                // Event listeners for WalletConnect provider
                 wcProvider.on("accountsChanged", async (accounts) => {
-                    if (accounts.length > 0) await connectWallet();
-                    else window.location.reload();
+                    if (accounts.length > 0) await connectWallet(); else window.location.reload();
                 });
                 wcProvider.on("chainChanged", async (chainId) => {
                     if (normalizeChainId(chainId) !== normalizeChainId(NEXUS_CHAIN_ID_DEC)) {
@@ -456,8 +590,14 @@
             setStatus('Connected to Nexus Testnet', 'text-green-600');
             updateConnectButton('CONNECTED');
             setActionButtonsEnabled(true);
+            
+            // --- New/Updated Calls After Connection ---
             await updateCount(true);
             await updateBadge();
+            await updateAdminUI(); // Check if user is admin
+            fetchLeaderboard(); // Fetch leaderboard data
+            // --- End New/Updated Calls ---
+
             startAutoRefresh();
         }
 
@@ -526,6 +666,9 @@
             }
         }
 
+        /**
+         * Sends a transaction to increment or decrement the counter.
+         */
         async function sendTransaction(methodName, buttonElement, originalText) {
             if (!contract || buttonElement.disabled) return;
             setActionButtonsEnabled(false);
@@ -533,7 +676,13 @@
             setStatus('Awaiting Signature...', 'text-yellow-600');
             ui.messageContainer.classList.add('hidden'); 
             try {
-                const tx = await contract[methodName]();
+                // 1. Fetch the exact required fee from the contract
+                const readOnlyContract = await getReadContract();
+                const fee = await readOnlyContract.fee();
+                
+                // 2. Send the transaction, including the fee in the 'value' field
+                const tx = await contract[methodName]({ value: fee });
+                
                 buttonElement.textContent = 'Waiting for Tx...';
                 setStatus('Transaction sent, waiting for mining...', 'text-orange-600');
                 const receipt = await tx.wait();
@@ -542,11 +691,29 @@
                     setStatus('Connected to Nexus Testnet', 'text-green-600');
                     await updateCount(true); 
                     await updateBadge();
+                    await fetchLeaderboard();
                 } else {
                     displayMessage('Transaction failed on the blockchain.', 'error', tx.hash);
                 }
             } catch (e) {
-                displayMessage(e.code === 'ACTION_REJECTED' ? 'Transaction rejected.' : 'Transaction failed.', 'error');
+                // Extract reason, error code, or message
+                const reason = e.reason || e.code || e.message || 'Transaction failed.';
+                let displayReason = reason;
+
+                // CRITICAL FIX: Handle the specific timeLocked() revert message
+                if (reason.includes("Action locked: wait")) {
+                    displayReason = "Action blocked: Please wait 1 hour between actions (cooldown enforced by contract).";
+                } else if (reason.includes('already zero')) {
+                    displayReason = "Decrement failed: Counter is already zero.";
+                } else if (reason.includes('rejected') || reason === 'ACTION_REJECTED') {
+                    displayReason = 'Transaction rejected by wallet.';
+                } else {
+                     // For general errors, just show the core message
+                    displayReason = displayReason.split('(')[0].trim();
+                }
+
+                displayMessage(displayReason, 'error');
+
                 if (userAddress) setStatus('Connected to Nexus Testnet', 'text-green-600');
             } finally {
                 setActionButtonsEnabled(true);
@@ -563,15 +730,43 @@
         ui.decrementBtn.onclick = decrementCounter;
         ui.copyBtn.onclick = () => copyToClipboard(ui.copyBtn.getAttribute('data-hash'));
 
+        // --- Admin Reset Button Handler ---
+        ui.resetBtn.onclick = async () => {
+            // Note: We don't need to check for admin status here as the contract will revert if msg.sender is not the owner
+            const newValueStr = prompt("Enter new counter value:");
+            if (newValueStr !== null) {
+                const newValue = Number(newValueStr);
+                if (!isNaN(newValue) && Number.isInteger(newValue)) {
+                    try {
+                        const tx = await contract.resetCounter(newValue);
+                        displayMessage("Resetting counter...", "info");
+                        await tx.wait();
+                        displayMessage("Counter reset successfully!", "success");
+                        await updateCount(true);
+                        await fetchLeaderboard();
+                    } catch (e) {
+                        const reason = e.reason || e.message || 'Reset failed.';
+                        // User-friendly error message for onlyOwner check
+                        const displayReason = reason.includes('Ownable') ? 'Reset failed: Only the contract owner can call this function.' : reason;
+                        displayMessage("Reset failed: " + displayReason, "error");
+                    }
+                } else {
+                    displayMessage("Invalid input. Please enter a whole number.", "error");
+                }
+            }
+        };
+        // --- End Admin Reset Button Handler ---
+
         window.onload = async () => {
             await loadContractConfig();
-            if (!CONTRACT_ADDRESS || !CONTRACT_ABI) {
-                setStatus('Config Load Failed', 'text-red-500');
+            if (!CONTRACT_ADDRESS || !CONTRACT_ABI || CONTRACT_ADDRESS.includes("YourDeployedContractAddress")) {
+                setStatus('Config Load Failed (Update Address)', 'text-red-500');
                 updateConnectButton('DISCONNECTED');
                 ui.connectBtn.disabled = true;
                 return;
             }
             await updateCount(false);
+            fetchLeaderboard(); // Fetch leaderboard on initial load
             setStatus('Ready to connect', 'text-gray-500');
             updateConnectButton('DISCONNECTED');
             setActionButtonsEnabled(false);
