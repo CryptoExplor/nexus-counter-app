@@ -1,1 +1,581 @@
 
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Nexus Counter dApp</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    
+    <!-- Farcaster Mini App Metadata (Simplified for demonstration) -->
+    <meta name="fc:miniapp" content='{
+        "version":"1",
+        "imageUrl":"https://nexus-counter.vercel.app/image.png",
+        "button":{
+          "title":"Nexus Counter",
+          "action":{
+            "type":"launch_frame",
+            "name":"LAUNCH",
+            "url":"https://nexus-counter.vercel.app",
+            "splashImageUrl":"https://nexus-counter.vercel.app/splash.png",
+            "splashBackgroundColor":"#1B1B1E"
+          }
+        }
+    }' />
+
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Inter Font for main text and Roboto Mono for addresses -->
+    <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;700&family=Inter:wght@300;400;500;700;900&display=swap" rel="stylesheet">
+    
+    <style>
+        /* --- Color Configuration --- */
+        :root {
+            --background: #ffffff;
+            --foreground: #171717;
+            --subtle-bg: #f5f5f5;
+            --subtle-text: #525252;
+        }
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --background: #0a0a0a;
+                --foreground: #ededed;
+                --subtle-bg: #1f1f1f;
+                --subtle-text: #a3a3a3;
+            }
+        }
+        
+        /* Custom styles */
+        body {
+            font-family: 'Inter', Arial, Helvetica, sans-serif; 
+            color: var(--foreground);
+            background: var(--background); 
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+            transition: background 0.3s, color 0.3s;
+        }
+
+        .font-mono {
+            font-family: 'Roboto Mono', monospace; 
+        }
+
+        .app-card {
+            background-color: var(--background);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+        }
+
+        .app-subtle-box {
+            background-color: var(--subtle-bg);
+        }
+
+        /* Counter Pulse Animation */
+        @keyframes pulse {
+            0% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.05); opacity: 0.8; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        .counter-updated {
+            animation: pulse 0.6s ease-in-out;
+        }
+
+        /* Counter Loading State */
+        .counter-loading {
+            opacity: 0.6;
+            transition: opacity 0.3s ease-in-out;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex items-center justify-center p-4 relative">
+
+    <div id="app-card" class="app-card p-8 md:p-12 rounded-xl w-full max-w-lg transition-all duration-300">
+        
+        <!-- Title & Subtitle -->
+        <h1 class="text-3xl font-light tracking-tight mb-6 text-center">
+            Nexus Counter
+        </h1>
+        <p class="text-center mb-8" style="color: var(--subtle-text);">
+            A simple dApp on the Nexus network.
+        </p>
+
+        <!-- Status and User Meta -->
+        <div class="flex flex-col sm:flex-row justify-between items-center mb-6 p-4 app-subtle-box rounded-lg">
+            <div class="flex items-center mb-2 sm:mb-0">
+                <span class="text-xs font-medium uppercase tracking-wider mr-2" style="color: var(--subtle-text);">Status:</span>
+                <span id="status-meta" class="text-sm font-medium text-gray-500">Disconnected</span>
+            </div>
+            <div class="flex items-center">
+                <span class="text-xs font-medium uppercase tracking-wider mr-2" style="color: var(--subtle-text);">Wallet:</span>
+                <span id="user-meta" class="text-sm font-mono" style="color: var(--foreground);">Not Connected</span>
+            </div>
+        </div>
+
+        <!-- Counter Value Display -->
+        <div class="text-center my-10">
+            <p class="text-7xl md:text-8xl font-black counter-glow transition-colors duration-500" id="counter-value">
+                0
+            </p>
+            <p class="text-xs mt-2" style="color: var(--subtle-text);">Current contract value</p>
+        </div>
+
+        <!-- Badge Tier Display -->
+        <div id="badge-tier-container" class="text-center -mt-6 mb-8 hidden">
+             <span id="badge-tier" class="text-lg font-semibold text-indigo-600 dark:text-indigo-400"></span>
+        </div>
+
+        <!-- Action Area -->
+        <div class="flex flex-col space-y-4">
+            
+            <!-- Connect/Switch/Connected Button -->
+            <button id="connect-btn" class="w-full py-3 px-6 text-lg font-medium rounded-full bg-black hover:bg-gray-800 text-white shadow-xl transition-all duration-300 focus:outline-none focus:ring-4 focus:ring-gray-500 focus:ring-opacity-50 active:scale-[0.98]">
+                Connect Wallet
+            </button>
+
+            <!-- Increment/Decrement Group (hidden initially) -->
+            <div id="inc-dec-group" class="hidden flex space-x-4">
+                <button id="decrement-btn" disabled class="flex-1 py-3 px-6 text-lg font-medium rounded-full bg-red-600 hover:bg-red-700 text-white shadow-xl transition-all duration-300 focus:outline-none focus:ring-4 focus:ring-red-500 focus:ring-opacity-50 disabled:bg-red-400 disabled:cursor-not-allowed active:scale-[0.98]">
+                    Decrement
+                </button>
+                <button id="increment-btn" disabled class="flex-1 py-3 px-6 text-lg font-medium rounded-full bg-green-600 hover:bg-green-700 text-white shadow-xl transition-all duration-300 focus:outline-none focus:ring-4 focus:ring-green-500 focus:ring-opacity-50 disabled:bg-green-400 disabled:cursor-not-allowed active:scale-[0.98]">
+                    Increment
+                </button>
+            </div>
+            
+        </div>
+
+        <!-- Message/Error Display (hidden initially) -->
+        <div id="message-container" class="mt-6 p-3 rounded-lg text-center hidden">
+            <div id="message-text" class="font-medium"></div>
+            <div id="tx-details" class="mt-2 text-sm flex justify-center items-center gap-2 hidden">
+                <a id="tx-link" target="_blank" rel="noopener noreferrer" class="font-mono text-indigo-600 dark:text-indigo-400 hover:underline"></a>
+                <!-- Copy Button -->
+                <button id="copy-btn" data-hash="" class="flex items-center text-xs px-2 py-1 rounded bg-indigo-100 text-indigo-700 hover:bg-indigo-200 transition duration-200" title="Copy Transaction Hash">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 mr-1" viewBox="0 0 20 20" fill="currentColor">
+                        <path d="M7 9a2 2 0 012-2h6a2 2 0 012 2v6a2 2 0 01-2 2H9a2 2 0 01-2-2V9z" />
+                        <path d="M5 3a2 2 0 00-2 2v6a2 2 0 002 2V5h6a2 2 0 00-2-2H5z" />
+                    </svg>
+                    Copy Hash
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="absolute bottom-0 left-0 right-0 flex justify-center gap-6 py-4">
+        <a href="https://farcaster.xyz/dare1.eth" target="_blank" aria-label="Farcaster">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path d="M12 2C6.486 2 2 6.486 2 12s4.486 10 10 10 10-4.486 10-10S17.514 2 12 2zm0 18c-4.411 0-8-3.589-8-8s3.589-8 8-8 8 3.589 8 8-3.589 8-8 8z"/><path d="M12 7c-2.757 0-5 2.243-5 5s2.243 5 5 5 5-2.243 5-5-2.243-5-5-5zm0 8c-1.654 0-3-1.346-3-3s1.346-3 3-3 3 1.346 3 3-1.346 3-3 3z"/></svg>
+        </a>
+        <a href="https://x.com/kumar14700" target="_blank" aria-label="Twitter">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 16 16"><path d="M12.6.75h2.454l-5.36 6.142L16 15.25h-4.937l-3.867-5.07-4.425 5.07H.316l5.733-6.57L0 .75h5.063l3.495 4.633L12.601.75Zm-.86 13.028h1.36L4.323 2.145H2.865l8.875 11.633Z"/></svg>
+        </a>
+    </footer>
+
+
+    <script src="https://cdn.jsdelivr.net/npm/ethers@6.7.0/dist/ethers.umd.min.js"></script>
+    <script type="module">
+        import { sdk } from 'https://esm.sh/@farcaster/miniapp-sdk';
+        import EthereumProvider from 'https://esm.sh/@walletconnect/ethereum-provider';
+        
+        // --- IMPORTANT: CONFIGURE YOUR PROJECT ID ---
+        const WALLETCONNECT_PROJECT_ID = "e0dd881bad824ac3418617434a79f917"; 
+        
+        // --- Contract Details (loaded from JSON) ---
+        let CONTRACT_ADDRESS;
+        let CONTRACT_ABI;
+        
+        // --- NEXUS TESTNET CONFIGURATION ---
+        const NEXUS_CHAIN_ID_DEC = 3940;
+        const NEXUS_CHAIN_ID_HEX = '0xf64';
+        const NEXUS_RPC_URL = 'https://nexus-testnet.g.alchemy.com/v2/d5bxPxUVzMKqbZ2CA4EZi';
+        const EXPLORER_URL = 'https://testnet3.explorer.nexus.xyz';
+        const NATIVE_CURRENCY = { name: 'NEX', symbol: 'NEX', decimals: 18 };
+
+        // --- UI Element References ---
+        const ui = {
+            counterValue: document.getElementById('counter-value'),
+            connectBtn: document.getElementById('connect-btn'),
+            incDecGroup: document.getElementById('inc-dec-group'),
+            incrementBtn: document.getElementById('increment-btn'),
+            decrementBtn: document.getElementById('decrement-btn'),
+            userMeta: document.getElementById('user-meta'),
+            badgeTierContainer: document.getElementById('badge-tier-container'),
+            badgeTier: document.getElementById('badge-tier'),
+            messageContainer: document.getElementById('message-container'),
+            messageText: document.getElementById('message-text'),
+            txDetails: document.getElementById('tx-details'),
+            txLink: document.getElementById('tx-link'),
+            copyBtn: document.getElementById('copy-btn'),
+            statusMeta: document.getElementById('status-meta'),
+        };
+
+        // --- State variables ---
+        let provider, signer, contract, readContract;
+        let userAddress = null;
+        let isConnecting = false;
+        let currentProviderInstance = null;
+        let messageTimeoutId = null;
+        let autoRefreshInterval = null;
+
+        /**
+         * Loads contract address and ABI from contract.json.
+         */
+        async function loadContractConfig() {
+            try {
+                const response = await fetch('contract.json');
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                const data = await response.json();
+                CONTRACT_ADDRESS = data.address;
+                CONTRACT_ABI = data.abi;
+            } catch (error) {
+                console.error("Fatal Error: Could not load contract.json.", error);
+                displayMessage("Could not load contract configuration.", 'error');
+            }
+        }
+
+        /**
+         * Creates a singleton instance of the read-only contract.
+         */
+        async function getReadContract() {
+            if (!readContract) {
+                const readProvider = new ethers.JsonRpcProvider(NEXUS_RPC_URL);
+                readContract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, readProvider);
+            }
+            return readContract;
+        }
+
+        // --- Smart Auto-Refresh Functions ---
+        function startAutoRefresh() {
+            if (autoRefreshInterval) return; // already running
+            autoRefreshInterval = setInterval(async () => {
+                if (userAddress && contract) {
+                    const prevValue = ui.counterValue.textContent;
+                    await updateCount(false);
+                    // Only update badge if the count has changed, to save a read call
+                    if (ui.counterValue.textContent !== "Error" && ui.counterValue.textContent !== prevValue) {
+                        await updateBadge();
+                    }
+                }
+            }, 5000); // refresh every 5 seconds
+        }
+
+        function stopAutoRefresh() {
+            if (autoRefreshInterval) {
+                clearInterval(autoRefreshInterval);
+                autoRefreshInterval = null;
+            }
+        }
+
+        // --- Utility Functions ---
+        function normalizeChainId(chainId) {
+            if (!chainId) return BigInt(-1);
+            if (typeof chainId === 'bigint') return chainId;
+            if (typeof chainId === 'number') return BigInt(chainId);
+            return BigInt(chainId.toString());
+        }
+
+        function isFarcasterMiniApp() {
+            return window?.navigator?.userAgent?.includes("Farcaster") || window?.fcMiniApp !== undefined;
+        }
+
+        function formatAddress(addr) {
+            return addr ? `${addr.slice(0, 6)}...${addr.slice(-4)}` : "Not Connected";
+        }
+
+        function formatHash(hash) {
+            return hash ? `${hash.slice(0, 6)}...${hash.slice(-4)}` : "";
+        }
+        
+        function setStatus(text, colorClass) {
+            ui.statusMeta.textContent = text;
+            ui.statusMeta.className = ui.statusMeta.className.split(' ').filter(c => !c.startsWith('text-')).join(' ');
+            ui.statusMeta.classList.add(colorClass);
+        }
+
+        function setActionButtonsEnabled(enabled) {
+            ui.incrementBtn.disabled = !enabled;
+            ui.decrementBtn.disabled = !enabled;
+            if (enabled) {
+                ui.incDecGroup.classList.remove('hidden');
+                ui.incDecGroup.classList.add('flex');
+            } else {
+                ui.incDecGroup.classList.add('hidden');
+                ui.incDecGroup.classList.remove('flex');
+            }
+        }
+        
+        function updateConnectButton(state) {
+            ui.connectBtn.disabled = false;
+            ui.connectBtn.onclick = null;
+            ui.connectBtn.classList.remove('bg-red-600', 'hover:bg-red-700', 'bg-black', 'hover:bg-gray-800');
+            switch (state) {
+                case 'CONNECTED':
+                    ui.connectBtn.textContent = 'Wallet Connected';
+                    ui.connectBtn.disabled = true; 
+                    ui.connectBtn.classList.add('bg-black');
+                    break;
+                case 'WRONG_NETWORK':
+                    ui.connectBtn.textContent = 'Switch to Nexus Testnet';
+                    ui.connectBtn.onclick = switchToNexus;
+                    ui.connectBtn.classList.add('bg-red-600', 'hover:bg-red-700');
+                    break;
+                case 'LOADING':
+                    ui.connectBtn.textContent = 'Connecting...';
+                    ui.connectBtn.disabled = true;
+                    ui.connectBtn.classList.add('bg-black');
+                    break;
+                case 'DISCONNECTED':
+                default:
+                    ui.connectBtn.textContent = 'Connect Wallet';
+                    ui.connectBtn.onclick = connectWallet;
+                    ui.connectBtn.classList.add('bg-black', 'hover:bg-gray-800');
+                    break;
+            }
+        }
+
+        function displayMessage(message, type = 'info', hash = null) {
+            let baseClasses = 'mt-6 p-3 rounded-xl text-center transition-all duration-300';
+            let duration = 5000;
+            if (messageTimeoutId) clearTimeout(messageTimeoutId);
+            ui.txDetails.classList.add('hidden'); 
+            switch (type) {
+                case 'error': baseClasses += ' bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300'; duration = 8000; break;
+                case 'success': baseClasses += ' bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300'; break;
+                default: baseClasses += ' bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300'; break;
+            }
+            ui.messageContainer.className = baseClasses;
+            ui.messageText.textContent = message;
+            ui.messageContainer.classList.remove('hidden');
+            if (hash) {
+                ui.txLink.href = `${EXPLORER_URL}/tx/${hash}`; 
+                ui.txLink.textContent = formatHash(hash);
+                ui.txDetails.classList.remove('hidden');
+                ui.copyBtn.setAttribute('data-hash', hash); 
+            }
+            messageTimeoutId = setTimeout(() => {
+                ui.messageContainer.classList.add('hidden');
+            }, duration);
+        }
+        
+        function copyToClipboard(text) {
+            navigator.clipboard ? navigator.clipboard.writeText(text).then(() => displayMessage('Transaction hash copied!', 'success'), () => fallbackCopy(text)) : fallbackCopy(text);
+        }
+
+        function fallbackCopy(text) {
+            const tempInput = document.createElement('input');
+            tempInput.value = text;
+            document.body.appendChild(tempInput);
+            tempInput.select();
+            try {
+                document.execCommand('copy') ? displayMessage('Transaction hash copied!', 'success') : displayMessage('Failed to copy hash.', 'error');
+            } catch (err) {
+                displayMessage('Failed to copy hash.', 'error');
+            }
+            document.body.removeChild(tempInput);
+        }
+
+        function addSpinner(buttonElement, originalText) {
+            buttonElement.innerHTML = `<svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-white inline" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>${originalText}...`;
+        }
+
+        /**
+         * Fetches and updates the user's badge tier.
+         */
+        async function updateBadge() {
+            if (!contract || !userAddress) {
+                ui.badgeTierContainer.classList.add('hidden');
+                return;
+            }
+            try {
+                const tier = await contract.getBadgeTier(userAddress);
+                const tierValue = Number(tier); // Convert BigInt to Number
+                let tierText = "No Badge";
+                if (tierValue >= 1000) tierText = "🌟 Nexus Overlord (1000+)";
+                else if (tierValue >= 500) tierText = "⚔️ Nexus Knight (500+)";
+                else if (tierValue >= 250) tierText = "🧙 Nexus Adept (250+)";
+                else if (tierValue >= 100) tierText = "📜 Nexus Apprentice (100+)";
+                ui.badgeTier.textContent = tierText;
+                tierText !== "No Badge" ? ui.badgeTierContainer.classList.remove('hidden') : ui.badgeTierContainer.classList.add('hidden');
+            } catch (e) {
+                console.error("Failed to fetch badge tier:", e);
+                ui.badgeTierContainer.classList.add('hidden');
+            }
+        }
+
+        // --- Core Connection and Contract Setup ---
+        async function initProvider() {
+            if (isFarcasterMiniApp()) {
+                sdk.actions.ready({ disableNativeGestures: true });
+                if (!sdk.ethereum) throw new Error("Farcaster SDK Ethereum provider not available.");
+                currentProviderInstance = sdk.ethereum;
+            } else {
+                if (WALLETCONNECT_PROJECT_ID === "YOUR_WALLETCONNECT_PROJECT_ID") {
+                     displayMessage('ERROR: WalletConnect Project ID is required.', 'error');
+                     throw new Error("Missing WalletConnect Project ID");
+                }
+                const wcProvider = await EthereumProvider.init({
+                    projectId: WALLETCONNECT_PROJECT_ID,
+                    chains: [NEXUS_CHAIN_ID_DEC], 
+                    showQrModal: true,
+                    rpc: { [NEXUS_CHAIN_ID_DEC]: NEXUS_RPC_URL }
+                });
+                
+                // Smoothly handle account and chain changes without reloading the page
+                wcProvider.on("accountsChanged", async (accounts) => {
+                    if (accounts.length > 0) await connectWallet();
+                    else window.location.reload();
+                });
+                wcProvider.on("chainChanged", async (chainId) => {
+                    if (normalizeChainId(chainId) !== normalizeChainId(NEXUS_CHAIN_ID_DEC)) {
+                        setStatus('Wrong Network', 'text-red-500');
+                        updateConnectButton('WRONG_NETWORK');
+                        setActionButtonsEnabled(false);
+                        stopAutoRefresh();
+                    } else {
+                        await connectWallet();
+                    }
+                });
+                wcProvider.on("disconnect", () => {
+                    stopAutoRefresh();
+                    window.location.reload();
+                });
+
+                await wcProvider.connect();
+                currentProviderInstance = wcProvider;
+            }
+
+            provider = new ethers.BrowserProvider(currentProviderInstance);
+            signer = await provider.getSigner();
+            contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
+            userAddress = await signer.getAddress();
+            
+            const network = await provider.getNetwork();
+            if (normalizeChainId(network.chainId) !== normalizeChainId(NEXUS_CHAIN_ID_DEC)) {
+                throw new Error('Wrong Network: ' + network.chainId.toString(10));
+            }
+
+            ui.userMeta.textContent = formatAddress(userAddress);
+            setStatus('Connected to Nexus Testnet', 'text-green-600');
+            updateConnectButton('CONNECTED');
+            setActionButtonsEnabled(true);
+            await updateCount(true);
+            await updateBadge();
+            startAutoRefresh();
+        }
+
+        async function switchToNexus() {
+            if (isConnecting || !currentProviderInstance) return;
+            isConnecting = true;
+            updateConnectButton('LOADING');
+            try {
+                await currentProviderInstance.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: NEXUS_CHAIN_ID_HEX }] });
+                await connectWallet(); 
+            } catch (error) {
+                if (error.code === 4902) {
+                    try {
+                        await currentProviderInstance.request({ method: 'wallet_addEthereumChain', params: [{ chainId: NEXUS_CHAIN_ID_HEX, chainName: 'Nexus Testnet', rpcUrls: [NEXUS_RPC_URL], blockExplorerUrls: [EXPLORER_URL], nativeCurrency: NATIVE_CURRENCY }] });
+                        await connectWallet();
+                    } catch (addError) {
+                        displayMessage('Failed to add Nexus Testnet.', 'error');
+                    }
+                } else {
+                    displayMessage(error.code === 4001 ? "Network switch rejected." : "Failed to switch networks.", 'error');
+                }
+                updateConnectButton('WRONG_NETWORK');
+            } finally { isConnecting = false; }
+        }
+
+        async function connectWallet() {
+            if (isConnecting) return;
+            isConnecting = true;
+            updateConnectButton('LOADING');
+            try {
+                await initProvider();
+            } catch (e) {
+                console.error("Connection failed:", e);
+                userAddress = null;
+                ui.userMeta.textContent = 'Not Connected';
+                if (e.message?.includes('Wrong Network')) {
+                     setStatus('Wrong Network', 'text-red-500');
+                     updateConnectButton('WRONG_NETWORK');
+                } else {
+                    const msg = e.message?.includes('rejected') || e.message?.includes('closed') ? 'Connection rejected.' : 'Connection failed.';
+                    displayMessage(msg, 'error');
+                    setStatus('Disconnected', 'text-gray-500');
+                    updateConnectButton('DISCONNECTED');
+                }
+                setActionButtonsEnabled(false);
+            } finally { isConnecting = false; }
+        }
+
+        async function updateCount(triggerAnimation = false) {
+            ui.counterValue.classList.add("counter-loading");
+            try {
+                const contract = await getReadContract();
+                const value = await contract.getCount();
+                const newValue = value.toString();
+                if (ui.counterValue.textContent !== newValue && triggerAnimation) {
+                    ui.counterValue.classList.add("counter-updated");
+                    setTimeout(() => ui.counterValue.classList.remove("counter-updated"), 600);
+                }
+                ui.counterValue.textContent = newValue;
+            } catch (e) {
+                ui.counterValue.textContent = "Error";
+                console.error("Read count error:", e);
+                if (triggerAnimation) displayMessage("Failed to read counter value.", 'error');
+            } finally {
+                ui.counterValue.classList.remove("counter-loading");
+            }
+        }
+
+        async function sendTransaction(methodName, buttonElement, originalText) {
+            if (!contract || buttonElement.disabled) return;
+            setActionButtonsEnabled(false);
+            addSpinner(buttonElement, originalText);
+            setStatus('Awaiting Signature...', 'text-yellow-600');
+            ui.messageContainer.classList.add('hidden'); 
+            try {
+                const tx = await contract[methodName]();
+                buttonElement.textContent = 'Waiting for Tx...';
+                setStatus('Transaction sent, waiting for mining...', 'text-orange-600');
+                const receipt = await tx.wait();
+                if (receipt && receipt.status === 1) {
+                    displayMessage('Transaction successful!', 'success', tx.hash);
+                    setStatus('Connected to Nexus Testnet', 'text-green-600');
+                    await updateCount(true); 
+                    await updateBadge();
+                } else {
+                    displayMessage('Transaction failed on the blockchain.', 'error', tx.hash);
+                }
+            } catch (e) {
+                displayMessage(e.code === 'ACTION_REJECTED' ? 'Transaction rejected.' : 'Transaction failed.', 'error');
+                if (userAddress) setStatus('Connected to Nexus Testnet', 'text-green-600');
+            } finally {
+                setActionButtonsEnabled(true);
+                buttonElement.textContent = originalText;
+            }
+        }
+        
+        // --- Initialization and Event Listeners Setup ---
+        const incrementCounter = () => sendTransaction('increment', ui.incrementBtn, 'Increment');
+        const decrementCounter = () => sendTransaction('decrement', ui.decrementBtn, 'Decrement');
+        
+        ui.connectBtn.onclick = connectWallet; 
+        ui.incrementBtn.onclick = incrementCounter;
+        ui.decrementBtn.onclick = decrementCounter;
+        ui.copyBtn.onclick = () => copyToClipboard(ui.copyBtn.getAttribute('data-hash'));
+
+        window.onload = async () => {
+            await loadContractConfig();
+            if (!CONTRACT_ADDRESS || !CONTRACT_ABI) {
+                setStatus('Config Load Failed', 'text-red-500');
+                updateConnectButton('DISCONNECTED');
+                ui.connectBtn.disabled = true;
+                return;
+            }
+            await updateCount(false);
+            setStatus('Ready to connect', 'text-gray-500');
+            updateConnectButton('DISCONNECTED');
+            setActionButtonsEnabled(false);
+        }
+    </script>
+</body>
+</html>
