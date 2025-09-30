@@ -289,16 +289,19 @@
          */
         async function loadContractConfig() {
             try {
+                // NOTE: Fetching an external file like 'contract.json' may not work in all limited iframe environments.
+                // Using a direct fetch here, but be aware of possible CORS/security issues in some contexts.
                 const response = await fetch('contract.json'); 
                 if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
                 const data = await response.json();
                 CONTRACT_ADDRESS = data.address;
                 CONTRACT_ABI = data.abi;
             } catch (error) {
-                // FALLBACK: If contract.json is not available, use placeholders.
-                CONTRACT_ADDRESS = "0x...YourDeployedContractAddress..."; // Placeholder, replace this!
+                // FALLBACK: Use placeholders and a minimal ABI
+                CONTRACT_ADDRESS = "0x...YourDeployedContractAddress...";
                 CONTRACT_ABI = [
-                    { name: "getCount", type: "function", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
+                    // Changed 'getCount' to 'count' to match the public state variable getter
+                    { name: "count", type: "function", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
                     { name: "fee", type: "function", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
                     { name: "increment", type: "function", stateMutability: "payable", inputs: [], outputs: [] },
                     { name: "decrement", type: "function", stateMutability: "payable", inputs: [], outputs: [] },
@@ -309,12 +312,12 @@
                     { name: "getTopCounts", type: "function", stateMutability: "view", inputs: [], outputs: [{ type: "uint256[]" }] },
                 ];
                 
-                if (error.message.includes('HTTP error!')) {
+                if (error.message?.includes('HTTP error!')) {
                     console.error("Could not load contract.json. Using placeholder ABI/Address.", error);
                     displayMessage("Warning: Using placeholder contract config. Please ensure 'contract.json' is deployed.", 'error');
                 } else {
                     console.error("Fatal Error: Could not load contract.json.", error);
-                    displayMessage("Could not load contract configuration.", 'error');
+                    // This is the error if the file doesn't exist
                 }
             }
         }
@@ -546,14 +549,13 @@
                 const tierValue = Number(stats[3]); // tier is the 4th element (index 3)
                 
                 let tierText = "No Badge";
-                // Contract Tiers: 1:Bronze(10), 2:Silver(25), 3:Gold(50), 4:Platinum(100), 5:Diamond(250), 6:Master(500), 7:Legendary(1000)
-                if (tierValue === 7) tierText = "🌟 Legendary Badge (1000+ Actions)";
-                else if (tierValue === 6) tierText = "💎 Master Badge (500+ Actions)";
-                else if (tierValue === 5) tierText = "🔷 Diamond Badge (250+ Actions)";
-                else if (tierValue === 4) tierText = "🪙 Platinum Badge (100+ Actions)";
-                else if (tierValue === 3) tierText = "🥇 Gold Badge (50+ Actions)";
-                else if (tierValue === 2) tierText = "🥈 Silver Badge (25+ Actions)";
-                else if (tierValue === 1) tierText = "🥉 Bronze Badge (10+ Actions)";
+                if (tierValue === 7) tierText = "⭐ Legendary Badge (1000+ Actions)";
+                else if (tierValue === 6) tierText = "👑 Master Badge (500+ Actions)";
+                else if (tierValue === 5) tierText = "💎 Diamond Badge (250+ Actions)";
+                else if (tierValue === 4) tierText = "💿 Platinum Badge (100+ Actions)";
+                else if (tierValue === 3) tierText = "📀 Gold Badge (50+ Actions)";
+                else if (tierValue === 2) tierText = "⚪ Silver Badge (25+ Actions)";
+                else if (tierValue === 1) tierText = "🟤 Bronze Badge (10+ Actions)";
                 
                 ui.badgeTier.textContent = tierText;
                 
@@ -577,9 +579,13 @@
             isConnecting = true;
             updateConnectButton('LOADING');
             try {
-                if (!isFarcasterMiniApp()) {
+                // NOTE: The strict Farcaster check is removed here to allow the app to load
+                // in the Canvas preview, even though the connection will still fail because 
+                // the required 'window.fcMiniApp' object is missing.
+                /* if (!isFarcasterMiniApp()) {
                      throw new Error("This dApp must be run within a Farcaster Mini App environment.");
                 }
+                */
 
                 // 1. Connect using the Farcaster connector
                 const { accounts, chainId } = await connect(wagmiConfig, { 
@@ -630,7 +636,8 @@
                      buttonState = 'WRONG_NETWORK';
                      statusColor = 'text-red-500';
                 } else if (e.message?.includes('Farcaster')) {
-                    msg = 'This dApp requires the Farcaster Mini App environment.';
+                    // This error means the connector failed because the environment is missing
+                    msg = 'Farcaster environment missing. Please view this dApp in a Farcaster Mini App.';
                     statusColor = 'text-red-500';
                 } else if (e.message?.includes('User rejected')) {
                     msg = 'Connection rejected by wallet.';
@@ -669,14 +676,16 @@
 
         /**
          * Reads the contract count value.
+         * NOTE: Updated functionName from 'getCount' to 'count' to match the public state variable getter.
          */
         async function updateCount(triggerAnimation = false) {
             ui.counterValue.classList.add("counter-loading");
             try {
+                // *** IMPORTANT CHANGE HERE ***
                 const value = await readContract(wagmiConfig, {
                     address: CONTRACT_ADDRESS,
                     abi: CONTRACT_ABI,
-                    functionName: 'Count',
+                    functionName: 'count', // Calling the getter for the public 'count' state variable
                     chainId: NEXUS_CHAIN_ID_DEC,
                 });
                 
@@ -787,14 +796,19 @@
                         displayMessage("Resetting counter...", "info");
                         
                         // 2. Wait for the transaction receipt
-                        await waitForTransactionReceipt(wagmiConfig, { hash, chainId: NEXUS_CHAIN_ID_DEC });
+                        const receipt = await waitForTransactionReceipt(wagmiConfig, { hash, chainId: NEXUS_CHAIN_ID_DEC });
                         
-                        displayMessage("Counter reset successfully!", "success", hash);
-                        await updateCount(true);
-                        await fetchLeaderboard();
+                        if (receipt.status === 'success') {
+                            displayMessage("Counter reset successfully!", "success", hash);
+                            await updateCount(true);
+                            await fetchLeaderboard();
+                        } else {
+                             displayMessage('Transaction failed on the blockchain (Status: Reverted).', 'error', hash);
+                        }
                     } catch (e) {
+                         // Use e.message instead of e.reason for better compatibility across environments
                          const reason = e.message || 'Reset failed.';
-                         const displayReason = reason.includes('Owner') ? 'Reset failed: Only the contract owner can call this function.' : reason;
+                         const displayReason = reason.includes('Ownable') ? 'Reset failed: Only the contract owner can call this function.' : reason;
                          displayMessage("Reset failed: " + displayReason, "error", hash);
                     }
                 } else {
