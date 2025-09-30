@@ -796,7 +796,7 @@
             }
             
             // Initial read of the counter (will be '0' or the actual count if successful)
-            await updateCount(false);
+            await getCount(false);
             
             // Fetch leaderboard on initial load (optional, but good if contract is live)
             fetchLeaderboard(); 
