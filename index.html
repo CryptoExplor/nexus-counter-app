@@ -249,7 +249,7 @@
         async function loadContractConfig() {
             try {
                 // IMPORTANT: In a real deployment, ensure contract.json is accessible.
-                const response = await fetch('contract.json'); 
+                const response = await fetch('/contract.json'); 
                 if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
                 const data = await response.json();
                 CONTRACT_ADDRESS = data.address;
