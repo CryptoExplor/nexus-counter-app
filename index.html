@@ -233,7 +233,7 @@
         import { farcasterMiniApp } from 'https://esm.sh/@farcaster/miniapp-wagmi-connector';
         import { parseEther } from 'https://esm.sh/viem'; 
         
-        // NEW: Injected Connector Import for desktop extensions like Rabby
+        // NEW: Injected Connector Import for all browser extensions
         import { injected, walletConnect } from 'https://esm.sh/@wagmi/connectors'; 
         // --- END WAGMI / VIEM IMPORTS ---
 
@@ -270,8 +270,8 @@
         const wagmiConfig = createConfig({
             chains: [nexusTestnet],
             connectors: [
-                // 1. Injected Connector: For browser extensions (Rabby, MetaMask, etc.)
-                injected({ target: 'metamask' }), // Targets MetaMask, but detects others
+                // 1. Injected Connector: Now without a specific target to detect ALL browser extensions (Rabby, MetaMask, etc.)
+                injected({}), 
                 // 2. Farcaster Mini App Connector: For Farcaster mobile environment
                 farcasterMiniApp({
                     metadata: {
@@ -654,7 +654,7 @@
                 if (farcasterConnector) prioritizedConnectors.push(farcasterConnector);
             }
 
-            // 3. WalletConnect Connector (Universal fallback - will show QR modal)
+            // 3. WalletConnect Connector (Universal fallback - will show QR code modal)
             const wcConnector = connectorsToTry.find(c => c.id === 'walletConnect');
             if (wcConnector) prioritizedConnectors.push(wcConnector);
 
@@ -663,10 +663,7 @@
                     console.log(`Attempting connection with: ${connector.name || connector.id}`);
                     
                     // Skip WalletConnect if we're not using it as the final fallback 
-                    // (and it will automatically show the modal if this is the last one we're trying)
-                    if (connector.id === 'walletConnect' && !successfulConnection) {
-                         // This is the last attempt, allow WC to display its modal
-                    } else if (connector.id === 'walletConnect') {
+                    if (connector.id === 'walletConnect' && successfulConnection) {
                          // Skip if we already connected with injected/farcaster
                          continue;
                     }
