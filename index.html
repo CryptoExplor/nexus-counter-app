@@ -195,6 +195,12 @@
         </a>
     </footer>
 
+    <!-- Farcaster SDK (UNCHANGED) -->
+    <script type="module">
+        import { sdk } from 'https://esm.sh/@farcaster/miniapp-sdk';
+        sdk.actions.ready({ disableNativeGestures: true });
+    </script>
+
     <!-- Ethers.js removed, using Viem/Wagmi via module imports -->
     <script type="module">
         // --- WAGMI / VIEM IMPORTS ---
