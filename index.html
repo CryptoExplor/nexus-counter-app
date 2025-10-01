@@ -120,14 +120,15 @@
             </p>
 
             <!-- Status and User Meta -->
-            <div class="flex flex-col sm:flex-row justify-between items-center mb-6 p-4 app-subtle-box rounded-lg">
-                <div class="flex items-center mb-2 sm:mb-0">
+            <!-- UPDATED: Changed items-center to sm:items-start for better alignment on larger screens -->
+            <div class="flex flex-col sm:flex-row justify-between items-center sm:items-start mb-6 p-4 app-subtle-box rounded-lg">
+                <div class="flex items-baseline mb-2 sm:mb-0">
                     <span class="text-xs font-medium uppercase tracking-wider mr-2" style="color: var(--subtle-text);">Status:</span>
                     <span id="status-meta" class="text-sm font-medium text-gray-500">Disconnected</span>
                 </div>
                 <!-- UPDATED: Wrapped wallet info in a container to stack cooldown timer below it -->
                 <div class="flex flex-col items-center sm:items-end">
-                    <div class="flex items-center">
+                    <div class="flex items-baseline">
                         <span class="text-xs font-medium uppercase tracking-wider mr-2" style="color: var(--subtle-text);">Wallet:</span>
                         <span id="user-meta" class="text-sm font-mono" style="color: var(--foreground);">Not Connected</span>
                     </div>
@@ -761,7 +762,8 @@
 
                     // 2. Connection successful
                     ui.userMeta.textContent = formatAddress(userAddress);
-                    setStatus('Connected to Nexus Testnet', 'text-green-500');
+                    // UPDATED: Changed status text
+                    setStatus('Nexus Testnet', 'text-green-500');
                     updateConnectButton('CONNECTED');
                     setActionButtonsEnabled(true);
                     successfulConnection = true;
@@ -910,7 +912,8 @@
                 
                 if (receipt.status === 'success') {
                     displayMessage('Transaction successful!', 'success', hash);
-                    setStatus('Connected to Nexus Testnet', 'text-green-500');
+                    // UPDATED: Changed status text
+                    setStatus('Nexus Testnet', 'text-green-500');
                     await updateCount(true); 
                     await updateBadge();
                     await fetchLeaderboard();
@@ -935,8 +938,8 @@
                 }
 
                 displayMessage(displayReason, 'error', hash);
-
-                if (userAddress) setStatus('Connected to Nexus Testnet', 'text-green-500');
+                // UPDATED: Changed status text
+                if (userAddress) setStatus('Nexus Testnet', 'text-green-500');
             } finally {
                 setActionButtonsEnabled(true);
                 buttonElement.textContent = originalText;
