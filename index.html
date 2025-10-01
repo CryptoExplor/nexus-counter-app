@@ -125,9 +125,14 @@
                     <span class="text-xs font-medium uppercase tracking-wider mr-2" style="color: var(--subtle-text);">Status:</span>
                     <span id="status-meta" class="text-sm font-medium text-gray-500">Disconnected</span>
                 </div>
-                <div class="flex items-center">
-                    <span class="text-xs font-medium uppercase tracking-wider mr-2" style="color: var(--subtle-text);">Wallet:</span>
-                    <span id="user-meta" class="text-sm font-mono" style="color: var(--foreground);">Not Connected</span>
+                <!-- UPDATED: Wrapped wallet info in a container to stack cooldown timer below it -->
+                <div class="flex flex-col items-center sm:items-end">
+                    <div class="flex items-center">
+                        <span class="text-xs font-medium uppercase tracking-wider mr-2" style="color: var(--subtle-text);">Wallet:</span>
+                        <span id="user-meta" class="text-sm font-mono" style="color: var(--foreground);">Not Connected</span>
+                    </div>
+                    <!-- ADDED: Cooldown timer display area -->
+                    <div id="cooldown-timer" class="text-xs mt-2 font-bold" style="color: #f9cf45;"></div>
                 </div>
             </div>
 
@@ -327,6 +332,8 @@
             leaderboardContainer: document.getElementById('leaderboard-container'),
             leaderboardList: document.getElementById('leaderboard-list'),
             userRank: document.getElementById('user-rank'),
+            // ADDED: Cooldown timer UI element
+            cooldownTimer: document.getElementById('cooldown-timer'),
         };
 
         // --- State variables ---
@@ -335,6 +342,9 @@
         let messageTimeoutId = null;
         let autoRefreshInterval = null;
         let contractFee = 0n; // Use BigInt for contract values
+        // ADDED: Cooldown state variables
+        let cooldownIntervalId = null;
+        let cooldownEndTime = null;
 
         /**
          * Loads contract address and ABI from contract.json.
@@ -396,6 +406,74 @@
                 autoRefreshInterval = null;
             }
         }
+        
+        // --- ADDED: Cooldown Timer Functions ---
+
+        /**
+         * Fetches user stats from the contract to determine their cooldown period.
+         */
+        async function refreshCooldownTimer() {
+            if (!userAddress || !CONTRACT_ADDRESS) {
+                ui.cooldownTimer.textContent = "Connect wallet to see timer";
+                return;
+            }
+            try {
+                // getUserStats returns [increments, decrements, lastAction, tier]
+                const stats = await readContract(wagmiConfig, {
+                    address: CONTRACT_ADDRESS,
+                    abi: CONTRACT_ABI,
+                    functionName: 'getUserStats',
+                    args: [userAddress],
+                    chainId: NEXUS_CHAIN_ID_DEC,
+                });
+                const lastActionSec = Number(stats[2]);
+                // Cooldown is 1 hour (3600 seconds), converted to milliseconds
+                cooldownEndTime = (lastActionSec + 3600) * 1000;
+                updateCooldownDisplay(); // Update the display immediately with fetched data
+            } catch (e) {
+                console.error("Error fetching cooldown:", e);
+                ui.cooldownTimer.textContent = "Error fetching cooldown";
+                cooldownEndTime = null;
+            }
+        }
+
+        /**
+         * Updates the UI to show the remaining cooldown time.
+         */
+        function updateCooldownDisplay() {
+            const now = Date.now();
+            if (!cooldownEndTime || now >= cooldownEndTime) {
+                ui.cooldownTimer.textContent = "Ready for next action!";
+                return;
+            }
+            const remainingMs = cooldownEndTime - now;
+            const remainingSec = Math.floor(remainingMs / 1000);
+            const mins = Math.floor(remainingSec / 60);
+            const secs = remainingSec % 60;
+            ui.cooldownTimer.textContent = `Cooldown: ${mins}m ${secs < 10 ? "0" : ""}${secs}s`;
+        }
+
+        /**
+         * Starts an interval to refresh the cooldown timer every 5 seconds.
+         */
+        function startCooldownAutoRefresh() {
+            stopCooldownAutoRefresh(); // Clear any existing intervals
+            // This interval re-fetches from the contract every 5s and updates the display
+            cooldownIntervalId = setInterval(refreshCooldownTimer, 5000);
+            refreshCooldownTimer(); // Run immediately on start
+        }
+
+        /**
+         * Stops the cooldown timer interval.
+         */
+        function stopCooldownAutoRefresh() {
+            if (cooldownIntervalId) {
+                clearInterval(cooldownIntervalId);
+                cooldownIntervalId = null;
+            }
+        }
+        
+        // --- END Cooldown Timer Functions ---
 
         // --- Utility Functions ---
         function isFarcasterMiniApp() {
@@ -702,6 +780,8 @@
                     await updateAdminUI();
                     fetchLeaderboard();
                     startAutoRefresh();
+                    // ADDED: Start the cooldown timer on successful connection
+                    startCooldownAutoRefresh();
                     break; // Stop trying connectors
                 } catch (e) {
                     console.error(`Connection with ${connector.name || connector.id} failed:`, e.message);
@@ -739,6 +819,10 @@
                 setStatus('Disconnected', statusColor);
                 updateConnectButton(buttonState);
                 setActionButtonsEnabled(false);
+                // ADDED: Stop timers and clear text on disconnection
+                stopAutoRefresh();
+                stopCooldownAutoRefresh();
+                ui.cooldownTimer.textContent = '';
             }
 
             isConnecting = false; 
@@ -830,6 +914,8 @@
                     await updateCount(true); 
                     await updateBadge();
                     await fetchLeaderboard();
+                    // ADDED: Immediately refresh the cooldown timer after a successful transaction
+                    await refreshCooldownTimer();
                 } else {
                     displayMessage('Transaction failed on the blockchain (Status: Reverted).', 'error', hash);
                 }
