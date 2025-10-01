@@ -343,8 +343,9 @@
         let messageTimeoutId = null;
         let autoRefreshInterval = null;
         let contractFee = 0n; // Use BigInt for contract values
-        // ADDED: Cooldown state variables
-        let cooldownIntervalId = null;
+        // UPDATED: Cooldown state variables for separate intervals
+        let cooldownIntervalId = null; // For 5-sec contract sync
+        let cooldownDisplayIntervalId = null; // For 1-sec UI update
         let cooldownEndTime = null;
 
         /**
@@ -430,7 +431,7 @@
                 const lastActionSec = Number(stats[2]);
                 // Cooldown is 1 hour (3600 seconds), converted to milliseconds
                 cooldownEndTime = (lastActionSec + 3600) * 1000;
-                updateCooldownDisplay(); // Update the display immediately with fetched data
+                // No direct call to update display here, the 1-sec interval handles it
             } catch (e) {
                 console.error("Error fetching cooldown:", e);
                 ui.cooldownTimer.textContent = "Error fetching cooldown";
@@ -439,11 +440,13 @@
         }
 
         /**
-         * Updates the UI to show the remaining cooldown time.
+         * Updates the UI to show the remaining cooldown time. Called every second.
          */
         function updateCooldownDisplay() {
+            if (!cooldownEndTime) return; // Don't display if we haven't fetched the end time yet
+
             const now = Date.now();
-            if (!cooldownEndTime || now >= cooldownEndTime) {
+            if (now >= cooldownEndTime) {
                 ui.cooldownTimer.textContent = "Ready for next action!";
                 return;
             }
@@ -455,22 +458,30 @@
         }
 
         /**
-         * Starts an interval to refresh the cooldown timer every 5 seconds.
+         * Starts intervals to refresh cooldown data and update the display.
          */
         function startCooldownAutoRefresh() {
             stopCooldownAutoRefresh(); // Clear any existing intervals
-            // This interval re-fetches from the contract every 5s and updates the display
+
+            // Interval 1: Sync with contract every 5 seconds to get the accurate end time
             cooldownIntervalId = setInterval(refreshCooldownTimer, 5000);
             refreshCooldownTimer(); // Run immediately on start
+
+            // Interval 2: Update the UI display every second for a smooth countdown
+            cooldownDisplayIntervalId = setInterval(updateCooldownDisplay, 1000);
         }
 
         /**
-         * Stops the cooldown timer interval.
+         * Stops all cooldown timer intervals.
          */
         function stopCooldownAutoRefresh() {
             if (cooldownIntervalId) {
                 clearInterval(cooldownIntervalId);
                 cooldownIntervalId = null;
+            }
+            if (cooldownDisplayIntervalId) {
+                clearInterval(cooldownDisplayIntervalId);
+                cooldownDisplayIntervalId = null;
             }
         }
         
