@@ -236,15 +236,15 @@
           http,
           waitForTransactionReceipt
         } from 'https://esm.sh/@wagmi/core';
+        import { farcasterMiniApp } from 'https://esm.sh/@farcaster/miniapp-wagmi-connector';
         import { parseEther } from 'https://esm.sh/viem'; 
         
-        // --- REOWN APPKIT IMPORTS ---
-        import { WagmiAdapter } from 'https://esm.sh/@reown/appkit-adapter-wagmi';
-        import { createAppKit } from 'https://esm.sh/@reown/appkit';
-        // --- END REOWN APPKIT IMPORTS ---
+        // NEW: Injected Connector Import for all browser extensions
+        import { injected, walletConnect } from 'https://esm.sh/@wagmi/connectors'; 
+        // --- END WAGMI / VIEM IMPORTS ---
 
-        // --- WalletConnect Project ID ---
-        const PROJECT_ID = 'e0dd881bad824ac3418617434a79f917';
+        // --- WalletConnect Configuration ---
+        const WALLETCONNECT_PROJECT_ID = 'e0dd881bad824ac3418617434a79f917';
         
         // --- Contract Details (loaded from JSON) ---
         let CONTRACT_ADDRESS;
@@ -270,42 +270,47 @@
                 default: { name: 'Nexus Explorer', url: EXPLORER_URL },
             },
         };
-
-        // --- METADATA FOR CONNECTORS ---
-        const METADATA = {
-            name: 'Nexus Counter',
-            description: 'A simple dApp on the Nexus network.',
-            url: 'https://nexus-counter.vercel.app', 
-            icons: ['https://nexus-counter.vercel.app/favicon.ico'], 
-        };
         
-        // --- WAGMI CONFIGURATION WITH REOWN APPKIT ONLY FOR WALLET CONNECT ---
-        const chains = [nexusTestnet];
-
-        const wagmiAdapter = new WagmiAdapter({
-            chains,
-            projectId: PROJECT_ID,
-            metadata: METADATA,
-            features: {
-                allWallets: 'HIDE', // Hide all wallets except WalletConnect
-                analytics: true,
+        // --- WAGMI CONFIGURATION ---
+        // Create the Wagmi config including all connectors
+        const wagmiConfig = createConfig({
+            chains: [nexusTestnet],
+            connectors: [
+                // 1. Injected Connector: Now without a specific target to detect ALL browser extensions (Rabby, MetaMask, etc.)
+                injected({}), 
+                // 2. Farcaster Mini App Connector: For Farcaster mobile environment
+                farcasterMiniApp({
+                    metadata: {
+                        name: 'Nexus Counter',
+                        description: 'A simple dApp on the Nexus network.',
+                        url: 'https://nexus-counter.vercel.app', 
+                        icons: ['https://nexus-counter.vercel.app/favicon.ico'], 
+                    },
+                }),
+                // 3. WalletConnect Connector: Universal fallback (shows QR code modal)
+                walletConnect({ 
+                    projectId: WALLETCONNECT_PROJECT_ID,
+                    metadata: {
+                        name: 'Nexus Counter',
+                        description: 'A simple dApp on the Nexus network.',
+                        url: 'https://nexus-counter.vercel.app', 
+                        icons: ['https://nexus-counter.vercel.app/favicon.ico'], 
+                    },
+                    showQrModal: true, 
+                    qrModalOptions: {
+                        themeMode: 'dark',
+                        themeVariables: {
+                            '--wcm-z-index': '99999' 
+                        }
+                    }
+                }),
+            ],
+            transports: {
+                [nexusTestnet.id]: http(NEXUS_RPC_URL),
             },
         });
-
-        createAppKit({
-            adapters: [wagmiAdapter],
-            chains,
-            metadata: METADATA,
-            enableWallets: false, // Disable all wallet connections
-            enableWalletConnect: true, // Enable only WalletConnect
-            features: {
-                connectMethodsOrder: ['wallet'], // Limit to WalletConnect method only
-                analytics: true,
-            }
-        });
-
-        const wagmiConfig = wagmiAdapter.wagmiConfig;
         // --- END WAGMI CONFIGURATION ---
+
 
         // --- UI Element References ---
         const ui = {
@@ -342,21 +347,6 @@
         let cooldownIntervalId = null; // For 5-sec contract sync
         let cooldownDisplayIntervalId = null; // For 1-sec UI update
         let cooldownEndTime = null;
-
-        /**
-         * Waits for a connection after opening the modal (for AppKit).
-         */
-        async function waitForConnection(timeout = 60000) {
-            const start = Date.now();
-            while (Date.now() - start < timeout) {
-                const { isConnected, address } = getAccount(wagmiConfig);
-                if (isConnected && address) {
-                    return address;
-                }
-                await new Promise(resolve => setTimeout(resolve, 500));
-            }
-            throw new Error('Connection timeout or rejected');
-        }
 
         /**
          * Loads contract address and ABI from contract.json.
@@ -498,6 +488,11 @@
         // --- END Cooldown Timer Functions ---
 
         // --- Utility Functions ---
+        function isFarcasterMiniApp() {
+            // Check if Farcaster context is available
+            return typeof window?.fcMiniApp === 'object' || window?.navigator?.userAgent?.includes("Farcaster");
+        }
+
         function formatAddress(addr) {
             return addr ? `${addr.slice(0, 6)}...${addr.slice(-4)}` : "Not Connected";
         }
@@ -552,7 +547,8 @@
                     break;
                 case 'DISCONNECTED':
                 default:
-                    ui.connectBtn.textContent = 'Connect Wallet (WalletConnect)';
+                    // Better text to reflect the priority: Injected (Rabby/MetaMask) or Farcaster/WalletConnect
+                    ui.connectBtn.textContent = isFarcasterMiniApp() ? 'Connect Farcaster Wallet' : 'Connect Wallet (Extension/WC)';
                     // Re-apply the desired light/dark theme styles for the default state
                     ui.connectBtn.classList.add('bg-white', 'hover:bg-gray-200', 'text-black', 'dark:bg-white', 'dark:hover:bg-gray-200', 'dark:text-black');
                     ui.connectBtn.onclick = connectWallet;
@@ -636,17 +632,19 @@
          */
         async function fetchLeaderboard() {
             try {
-                const addresses = await readContract(wagmiConfig, {
+                const [addresses, counts] = await readContract(wagmiConfig, {
                     address: CONTRACT_ADDRESS,
                     abi: CONTRACT_ABI,
                     functionName: 'getTopAddresses',
                     chainId: NEXUS_CHAIN_ID_DEC,
-                });
-                const counts = await readContract(wagmiConfig, {
-                    address: CONTRACT_ADDRESS,
-                    abi: CONTRACT_ABI,
-                    functionName: 'getTopCounts',
-                    chainId: NEXUS_CHAIN_ID_DEC,
+                }).then(async (addresses) => {
+                    const counts = await readContract(wagmiConfig, {
+                        address: CONTRACT_ADDRESS,
+                        abi: CONTRACT_ABI,
+                        functionName: 'getTopCounts',
+                        chainId: NEXUS_CHAIN_ID_DEC,
+                    });
+                    return [addresses, counts];
                 });
                 
 
@@ -717,46 +715,71 @@
             }
         }
 
-        // --- Core Connection and Contract Setup (Updated for AppKit Only WalletConnect) ---
+        // --- Core Connection and Contract Setup (Wagmi + Injected + Farcaster + WalletConnect) ---
 
         /**
-         * Main function to handle wallet connection using Reown AppKit WalletConnect only.
+         * Main function to handle wallet connection. 
+         * Tries connectors in this order: Injected -> Farcaster (if applicable) -> WalletConnect.
          */
         async function connectWallet() {
             if (isConnecting) return;
             isConnecting = true;
             updateConnectButton('LOADING');
             
-            try {
-                console.log('Opening Reown AppKit modal for WalletConnect');
-                wagmiAdapter.open();
-                
-                // Wait for connection
-                userAddress = await waitForConnection();
-                
-                let currentChainId = getChainId(wagmiConfig);
-                
-                // Check/Switch network if needed
-                if (currentChainId !== NEXUS_CHAIN_ID_DEC) {
-                    try {
-                        await switchChain(wagmiConfig, { chainId: NEXUS_CHAIN_ID_DEC });
-                        currentChainId = getChainId(wagmiConfig);
-                    } catch (switchError) {
-                        if (switchError.message?.includes('rejected')) {
-                            throw new Error('Network switch rejected');
-                        }
-                        throw switchError;
-                    }
-                }
+            let successfulConnection = false;
 
-                if (currentChainId === NEXUS_CHAIN_ID_DEC) {
-                    // Connection successful
+            // Define the priority order of connectors to try
+            const connectorsToTry = wagmiConfig.connectors;
+            
+            // Filter connectors based on environment before trying
+            let prioritizedConnectors = [];
+            
+            // 1. Injected Connector (Rabby, MetaMask, etc.) - Always try first for desktop
+            const injectedConnector = connectorsToTry.find(c => c.id === 'injected');
+            if (injectedConnector) prioritizedConnectors.push(injectedConnector);
+
+            // 2. Farcaster Mini App Connector (If in Farcaster)
+            if (isFarcasterMiniApp()) {
+                const farcasterConnector = connectorsToTry.find(c => c.id === 'farcasterMiniApp');
+                if (farcasterConnector) prioritizedConnectors.push(farcasterConnector);
+            }
+
+            // 3. WalletConnect Connector (Universal fallback - will show QR code modal)
+            const wcConnector = connectorsToTry.find(c => c.id === 'walletConnect');
+            if (wcConnector) prioritizedConnectors.push(wcConnector);
+
+            for (const connector of prioritizedConnectors) {
+                try {
+                    console.log(`Attempting connection with: ${connector.name || connector.id}`);
+                    
+                    // Skip WalletConnect if we're not using it as the final fallback 
+                    if (connector.id === 'walletConnect' && successfulConnection) {
+                         // Skip if we already connected with injected/farcaster
+                         continue;
+                    }
+
+                    const { accounts, chainId } = await connect(wagmiConfig, { 
+                        connector: connector,
+                        chainId: NEXUS_CHAIN_ID_DEC,
+                    });
+                    
+                    userAddress = accounts[0];
+                    const currentChainId = getChainId(wagmiConfig);
+
+                    // 1. Check if the user is on the correct network
+                    if (currentChainId !== NEXUS_CHAIN_ID_DEC) {
+                        throw new Error('Wrong Network');
+                    }
+
+                    // 2. Connection successful
                     ui.userMeta.textContent = formatAddress(userAddress);
+                    // UPDATED: Changed status text
                     setStatus('Nexus Testnet', 'text-green-500');
                     updateConnectButton('CONNECTED');
                     setActionButtonsEnabled(true);
+                    successfulConnection = true;
 
-                    // Fetch contract fee
+                    // Fetch contract fee (viem returns BigInt)
                     contractFee = await readContract(wagmiConfig, {
                         address: CONTRACT_ADDRESS,
                         abi: CONTRACT_ABI,
@@ -770,25 +793,46 @@
                     await updateAdminUI();
                     fetchLeaderboard();
                     startAutoRefresh();
+                    // ADDED: Start the cooldown timer on successful connection
                     startCooldownAutoRefresh();
-                } else {
-                    throw new Error('Wrong Network');
+                    break; // Stop trying connectors
+                } catch (e) {
+                    console.error(`Connection with ${connector.name || connector.id} failed:`, e.message);
+                    // If wrong network or user rejected, try the next connector or handle specific error
+                    if (e.message?.includes('Wrong Network')) {
+                         // Fallthrough to the final error handler for 'Wrong Network'
+                         throw e;
+                    }
+                    if (connector.id === 'walletConnect' && e.message?.includes('User rejected')) {
+                         // If user closes the WC modal, stop trying
+                         break;
+                    }
+                    // Continue to the next connector
                 }
-            } catch (e) {
-                console.error('AppKit connection failed:', e.message);
+            }
+            
+            // Final error handling if no connection was successful
+            if (!successfulConnection) {
                 userAddress = null;
                 ui.userMeta.textContent = 'Not Connected';
 
-                if (e.message?.includes('Wrong Network') || e.message?.includes('Network switch rejected')) {
-                    updateConnectButton('WRONG_NETWORK');
-                    setStatus('Wrong Network', 'text-red-500');
-                    displayMessage('Please switch to Nexus Testnet (3940).', 'error');
-                } else if (e.message?.includes('timeout') || e.message?.includes('rejected')) {
-                    displayMessage('Connection cancelled or rejected.', 'error');
-                } else {
-                    displayMessage('Connection failed.', 'error');
+                let msg = 'Connection failed or rejected.';
+                let buttonState = 'DISCONNECTED';
+                let statusColor = 'text-gray-500';
+                
+                // Re-check for specific error from the last failed attempt (if any)
+                const lastError = arguments.callee.lastError;
+                if (lastError?.message?.includes('Wrong Network')) {
+                     msg = 'Please switch to Nexus Testnet (3940).';
+                     buttonState = 'WRONG_NETWORK';
+                     statusColor = 'text-red-500';
                 }
+
+                displayMessage(msg, 'error');
+                setStatus('Disconnected', statusColor);
+                updateConnectButton(buttonState);
                 setActionButtonsEnabled(false);
+                // ADDED: Stop timers and clear text on disconnection
                 stopAutoRefresh();
                 stopCooldownAutoRefresh();
                 ui.cooldownTimer.textContent = '';
@@ -978,6 +1022,11 @@
             setStatus('Ready to connect', 'text-gray-500');
             updateConnectButton('DISCONNECTED');
             setActionButtonsEnabled(false);
+            
+            // Auto-attempt connection if it looks like a Farcaster environment
+            if (isFarcasterMiniApp()) {
+                connectWallet();
+            }
         }
     </script>
 </body>
