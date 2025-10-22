@@ -236,12 +236,8 @@
           http,
           waitForTransactionReceipt
         } from 'https://esm.sh/@wagmi/core';
-        import { farcasterMiniApp } from 'https://esm.sh/@farcaster/miniapp-wagmi-connector';
         import { parseEther } from 'https://esm.sh/viem'; 
         
-        // NEW: Injected Connector Import for all browser extensions
-        import { injected } from 'https://esm.sh/@wagmi/connectors'; 
-
         // --- REOWN APPKIT IMPORTS ---
         import { WagmiAdapter } from 'https://esm.sh/@reown/appkit-adapter-wagmi';
         import { createAppKit } from 'https://esm.sh/@reown/appkit';
@@ -283,50 +279,32 @@
             icons: ['https://nexus-counter.vercel.app/favicon.ico'], 
         };
         
-        // --- WAGMI CONFIGURATION (DYNAMIC BASED ON ENVIRONMENT) ---
-        let wagmiConfig;
-        let wagmiAdapter;
+        // --- WAGMI CONFIGURATION WITH REOWN APPKIT ONLY FOR WALLET CONNECT ---
         const chains = [nexusTestnet];
 
-        const isFarcasterMiniApp = () => {
-            // Check if Farcaster context is available
-            return typeof window?.fcMiniApp === 'object' || window?.navigator?.userAgent?.includes("Farcaster");
-        };
+        const wagmiAdapter = new WagmiAdapter({
+            chains,
+            projectId: PROJECT_ID,
+            metadata: METADATA,
+            features: {
+                allWallets: 'HIDE', // Hide all wallets except WalletConnect
+                analytics: true,
+            },
+        });
 
-        // Setup config based on environment
-        if (isFarcasterMiniApp()) {
-            // For Farcaster Mini App: Use injected + farcasterMiniApp connectors
-            wagmiConfig = createConfig({
-                chains,
-                connectors: [
-                    injected({}), 
-                    farcasterMiniApp({ metadata: METADATA }),
-                ],
-                transports: {
-                    [nexusTestnet.id]: http(NEXUS_RPC_URL),
-                },
-            });
-        } else {
-            // For browser: Use Reown AppKit
-            wagmiAdapter = new WagmiAdapter({
-                chains,
-                projectId: PROJECT_ID,
-                metadata: METADATA,
-                features: {
-                    allWallets: 'SHOW',
-                    analytics: true,
-                },
-            });
-            createAppKit({
-                adapters: [wagmiAdapter],
-                chains,
-                metadata: METADATA,
-                features: {
-                    analytics: true,
-                }
-            });
-            wagmiConfig = wagmiAdapter.wagmiConfig;
-        }
+        createAppKit({
+            adapters: [wagmiAdapter],
+            chains,
+            metadata: METADATA,
+            enableWallets: false, // Disable all wallet connections
+            enableWalletConnect: true, // Enable only WalletConnect
+            features: {
+                connectMethodsOrder: ['wallet'], // Limit to WalletConnect method only
+                analytics: true,
+            }
+        });
+
+        const wagmiConfig = wagmiAdapter.wagmiConfig;
         // --- END WAGMI CONFIGURATION ---
 
         // --- UI Element References ---
@@ -574,8 +552,7 @@
                     break;
                 case 'DISCONNECTED':
                 default:
-                    // Better text to reflect the priority: Injected (Rabby/MetaMask) or Farcaster/WalletConnect
-                    ui.connectBtn.textContent = isFarcasterMiniApp() ? 'Connect Farcaster Wallet' : 'Connect Wallet (AppKit)';
+                    ui.connectBtn.textContent = 'Connect Wallet (WalletConnect)';
                     // Re-apply the desired light/dark theme styles for the default state
                     ui.connectBtn.classList.add('bg-white', 'hover:bg-gray-200', 'text-black', 'dark:bg-white', 'dark:hover:bg-gray-200', 'dark:text-black');
                     ui.connectBtn.onclick = connectWallet;
@@ -659,19 +636,17 @@
          */
         async function fetchLeaderboard() {
             try {
-                const [addresses, counts] = await readContract(wagmiConfig, {
+                const addresses = await readContract(wagmiConfig, {
                     address: CONTRACT_ADDRESS,
                     abi: CONTRACT_ABI,
                     functionName: 'getTopAddresses',
                     chainId: NEXUS_CHAIN_ID_DEC,
-                }).then(async (addresses) => {
-                    const counts = await readContract(wagmiConfig, {
-                        address: CONTRACT_ADDRESS,
-                        abi: CONTRACT_ABI,
-                        functionName: 'getTopCounts',
-                        chainId: NEXUS_CHAIN_ID_DEC,
-                    });
-                    return [addresses, counts];
+                });
+                const counts = await readContract(wagmiConfig, {
+                    address: CONTRACT_ADDRESS,
+                    abi: CONTRACT_ABI,
+                    functionName: 'getTopCounts',
+                    chainId: NEXUS_CHAIN_ID_DEC,
                 });
                 
 
@@ -742,140 +717,77 @@
             }
         }
 
-        // --- Core Connection and Contract Setup (Updated for AppKit) ---
+        // --- Core Connection and Contract Setup (Updated for AppKit Only WalletConnect) ---
 
         /**
-         * Main function to handle wallet connection. 
-         * Branches based on environment: Manual connectors for Farcaster, AppKit modal for browser.
+         * Main function to handle wallet connection using Reown AppKit WalletConnect only.
          */
         async function connectWallet() {
             if (isConnecting) return;
             isConnecting = true;
             updateConnectButton('LOADING');
             
-            let successfulConnection = false;
-
-            if (isFarcasterMiniApp()) {
-                // Farcaster Mini App: Try connectors manually (injected -> farcaster)
-                const connectorsToTry = wagmiConfig.connectors.filter(c => c.id === 'injected' || c.id === 'farcasterMiniApp');
+            try {
+                console.log('Opening Reown AppKit modal for WalletConnect');
+                wagmiAdapter.open();
                 
-                for (const connector of connectorsToTry) {
+                // Wait for connection
+                userAddress = await waitForConnection();
+                
+                let currentChainId = getChainId(wagmiConfig);
+                
+                // Check/Switch network if needed
+                if (currentChainId !== NEXUS_CHAIN_ID_DEC) {
                     try {
-                        console.log(`Attempting connection with: ${connector.name || connector.id}`);
-                        
-                        const { accounts, chainId } = await connect(wagmiConfig, { 
-                            connector: connector,
-                            chainId: NEXUS_CHAIN_ID_DEC,
-                        });
-                        
-                        userAddress = accounts[0];
-                        const currentChainId = getChainId(wagmiConfig);
-
-                        // Check if the user is on the correct network
-                        if (currentChainId !== NEXUS_CHAIN_ID_DEC) {
-                            throw new Error('Wrong Network');
+                        await switchChain(wagmiConfig, { chainId: NEXUS_CHAIN_ID_DEC });
+                        currentChainId = getChainId(wagmiConfig);
+                    } catch (switchError) {
+                        if (switchError.message?.includes('rejected')) {
+                            throw new Error('Network switch rejected');
                         }
-
-                        // Connection successful
-                        ui.userMeta.textContent = formatAddress(userAddress);
-                        setStatus('Nexus Testnet', 'text-green-500');
-                        updateConnectButton('CONNECTED');
-                        setActionButtonsEnabled(true);
-                        successfulConnection = true;
-
-                        // Fetch contract fee (viem returns BigInt)
-                        contractFee = await readContract(wagmiConfig, {
-                            address: CONTRACT_ADDRESS,
-                            abi: CONTRACT_ABI,
-                            functionName: 'fee',
-                            chainId: NEXUS_CHAIN_ID_DEC,
-                        });
-
-                        // Update UI data
-                        await updateCount(true);
-                        await updateBadge();
-                        await updateAdminUI();
-                        fetchLeaderboard();
-                        startAutoRefresh();
-                        startCooldownAutoRefresh();
-                        break; // Stop trying connectors
-                    } catch (e) {
-                        console.error(`Connection with ${connector.name || connector.id} failed:`, e.message);
-                        if (e.message?.includes('Wrong Network')) {
-                            throw e;
-                        }
+                        throw switchError;
                     }
                 }
-            } else {
-                // Browser: Use Reown AppKit modal
-                try {
-                    console.log('Opening Reown AppKit modal');
-                    wagmiAdapter.open();
-                    
-                    // Wait for connection
-                    userAddress = await waitForConnection();
-                    
-                    let currentChainId = getChainId(wagmiConfig);
-                    
-                    // Check/Switch network if needed
-                    if (currentChainId !== NEXUS_CHAIN_ID_DEC) {
-                        try {
-                            await switchChain(wagmiConfig, { chainId: NEXUS_CHAIN_ID_DEC });
-                            currentChainId = getChainId(wagmiConfig);
-                        } catch (switchError) {
-                            if (switchError.message?.includes('rejected')) {
-                                throw new Error('Network switch rejected');
-                            }
-                            throw switchError;
-                        }
-                    }
 
-                    if (currentChainId === NEXUS_CHAIN_ID_DEC) {
-                        // Connection successful
-                        ui.userMeta.textContent = formatAddress(userAddress);
-                        setStatus('Nexus Testnet', 'text-green-500');
-                        updateConnectButton('CONNECTED');
-                        setActionButtonsEnabled(true);
-                        successfulConnection = true;
+                if (currentChainId === NEXUS_CHAIN_ID_DEC) {
+                    // Connection successful
+                    ui.userMeta.textContent = formatAddress(userAddress);
+                    setStatus('Nexus Testnet', 'text-green-500');
+                    updateConnectButton('CONNECTED');
+                    setActionButtonsEnabled(true);
 
-                        // Fetch contract fee
-                        contractFee = await readContract(wagmiConfig, {
-                            address: CONTRACT_ADDRESS,
-                            abi: CONTRACT_ABI,
-                            functionName: 'fee',
-                            chainId: NEXUS_CHAIN_ID_DEC,
-                        });
+                    // Fetch contract fee
+                    contractFee = await readContract(wagmiConfig, {
+                        address: CONTRACT_ADDRESS,
+                        abi: CONTRACT_ABI,
+                        functionName: 'fee',
+                        chainId: NEXUS_CHAIN_ID_DEC,
+                    });
 
-                        // Update UI data
-                        await updateCount(true);
-                        await updateBadge();
-                        await updateAdminUI();
-                        fetchLeaderboard();
-                        startAutoRefresh();
-                        startCooldownAutoRefresh();
-                    } else {
-                        throw new Error('Wrong Network');
-                    }
-                } catch (e) {
-                    console.error('AppKit connection failed:', e.message);
-                    if (e.message?.includes('Wrong Network') || e.message?.includes('Network switch rejected')) {
-                        updateConnectButton('WRONG_NETWORK');
-                        setStatus('Wrong Network', 'text-red-500');
-                        displayMessage('Please switch to Nexus Testnet (3940).', 'error');
-                    } else if (e.message?.includes('timeout') || e.message?.includes('rejected')) {
-                        displayMessage('Connection cancelled or rejected.', 'error');
-                    } else {
-                        displayMessage('Connection failed.', 'error');
-                    }
+                    // Update UI data
+                    await updateCount(true);
+                    await updateBadge();
+                    await updateAdminUI();
+                    fetchLeaderboard();
+                    startAutoRefresh();
+                    startCooldownAutoRefresh();
+                } else {
+                    throw new Error('Wrong Network');
                 }
-            }
-            
-            // Final error handling if no connection was successful
-            if (!successfulConnection) {
+            } catch (e) {
+                console.error('AppKit connection failed:', e.message);
                 userAddress = null;
                 ui.userMeta.textContent = 'Not Connected';
-                setStatus('Disconnected', 'text-gray-500');
-                updateConnectButton('DISCONNECTED');
+
+                if (e.message?.includes('Wrong Network') || e.message?.includes('Network switch rejected')) {
+                    updateConnectButton('WRONG_NETWORK');
+                    setStatus('Wrong Network', 'text-red-500');
+                    displayMessage('Please switch to Nexus Testnet (3940).', 'error');
+                } else if (e.message?.includes('timeout') || e.message?.includes('rejected')) {
+                    displayMessage('Connection cancelled or rejected.', 'error');
+                } else {
+                    displayMessage('Connection failed.', 'error');
+                }
                 setActionButtonsEnabled(false);
                 stopAutoRefresh();
                 stopCooldownAutoRefresh();
@@ -1066,11 +978,6 @@
             setStatus('Ready to connect', 'text-gray-500');
             updateConnectButton('DISCONNECTED');
             setActionButtonsEnabled(false);
-            
-            // Auto-attempt connection if it looks like a Farcaster environment
-            if (isFarcasterMiniApp()) {
-                connectWallet();
-            }
         }
     </script>
 </body>
