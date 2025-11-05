@@ -713,7 +713,7 @@ async function castToFarcaster() {
             metadata: {
                 name: 'Nexus Counter',
                 description: 'A simple dApp on the Nexus network.',
-                url: https://nexus-counter.vercel.app/,
+                url: 'https://nexus-counter.vercel.app/',
                 icons: [`https://nexus-counter.vercel.app/icon.png`]
             },
             features: {
