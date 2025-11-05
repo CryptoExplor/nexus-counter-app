@@ -11,6 +11,7 @@ import { sdk } from '@farcaster/miniapp-sdk';
 import {
   createConfig,
   connect,
+  disconnect,
   getAccount,
   watchAccount,
   writeContract,
@@ -92,7 +93,7 @@ let cooldownEndTime = null;
 let wagmiConfig = null;
 let modal = null;
 let isFarcasterEnvironment = false;
-let lastActionType = null; // 'increment' or 'decrement'
+let lastActionType = null;
 
 // Safe localStorage wrapper
 const safeLocalStorage = {
@@ -197,16 +198,39 @@ function setActionButtonsEnabled(enabled) {
     }
 }
 
+// FIX #2: Updated to allow disconnection when connected
 function updateConnectButton(state) {
     ui.connectBtn.disabled = false;
     ui.connectBtn.onclick = null;
-    ui.connectBtn.classList.remove('bg-red-600', 'hover:bg-red-700', 'bg-white', 'hover:bg-gray-200', 'bg-gray-700', 'text-white', 'text-black');
+    ui.connectBtn.classList.remove('bg-red-600', 'hover:bg-red-700', 'bg-white', 'hover:bg-gray-200', 'bg-gray-700', 'text-white', 'text-black', 'hover:bg-gray-600');
 
     switch (state) {
         case 'CONNECTED':
-            ui.connectBtn.textContent = 'Wallet Connected';
-            ui.connectBtn.disabled = true;
-            ui.connectBtn.classList.add('bg-gray-700', 'text-white');
+            ui.connectBtn.textContent = '✓ Wallet Connected (Click to Change)';
+            ui.connectBtn.disabled = false; // FIX: Enable button
+            ui.connectBtn.classList.add('bg-gray-700', 'hover:bg-gray-600', 'text-white', 'cursor-pointer');
+            // FIX: Click to disconnect or open modal
+            ui.connectBtn.onclick = async () => {
+                if (confirm('Disconnect wallet or switch to another?')) {
+                    try {
+                        await disconnect(wagmiConfig);
+                        userAddress = null;
+                        ui.userMeta.textContent = 'Not Connected';
+                        setStatus('Disconnected', 'text-gray-500');
+                        updateConnectButton('DISCONNECTED');
+                        setActionButtonsEnabled(false);
+                        stopAutoRefresh();
+                        stopCooldownAutoRefresh();
+                        ui.cooldownTimer.textContent = '';
+                        ui.badgeTierContainer.classList.add('hidden');
+                        displayMessage('Wallet disconnected', 'info');
+                    } catch (e) {
+                        console.error('Disconnect error:', e);
+                    }
+                } else if (modal) {
+                    modal.open();
+                }
+            };
             break;
         case 'WRONG_NETWORK':
             ui.connectBtn.textContent = 'Switch to Nexus Testnet';
@@ -539,7 +563,7 @@ async function sendTransaction(methodName, buttonElement, originalText) {
     setStatus('Awaiting Signature...', 'text-yellow-500');
     ui.messageContainer.classList.add('hidden');
     
-    lastActionType = methodName; // Store the action type for casting
+    lastActionType = methodName;
     let hash;
 
     try {
@@ -592,7 +616,7 @@ async function sendTransaction(methodName, buttonElement, originalText) {
     }
 }
 
-// Cast to Farcaster
+// FIX #3: Cast to Farcaster with proper status reset
 async function castToFarcaster() {
     if (!lastActionType) {
         displayMessage('No recent action to cast about!', 'warning');
@@ -613,15 +637,19 @@ async function castToFarcaster() {
                 embeds: [embedUrl]
             });
             
+            // FIX: Reset status after cast is completed or cancelled
             if (result?.cast) {
-                displayMessage(`Cast posted! Hash: ${result.cast.hash.slice(0, 10)}...`, 'success');
+                displayMessage(`✅ Cast posted! Hash: ${result.cast.hash.slice(0, 10)}...`, 'success');
                 console.log('Cast hash:', result.cast.hash);
+                setStatus('Nexus Testnet', 'text-green-500'); // Reset status
             } else {
                 displayMessage('Cast cancelled', 'info');
+                setStatus('Nexus Testnet', 'text-green-500'); // Reset status
             }
         } catch (e) {
             console.error('Cast failed:', e);
             displayMessage('Failed to create cast. Please try again.', 'error');
+            setStatus('Nexus Testnet', 'text-green-500'); // Reset status
         }
     } else {
         const warpcastUrl = `https://warpcast.com/~/compose?text=${encodeURIComponent(text)}&embeds[]=${encodeURIComponent(embedUrl)}`;
@@ -629,8 +657,13 @@ async function castToFarcaster() {
         
         if (popup) {
             displayMessage('Opening Warpcast composer...', 'success');
+            // Reset status after a short delay
+            setTimeout(() => {
+                setStatus('Nexus Testnet', 'text-green-500');
+            }, 2000);
         } else {
             displayMessage('Please allow popups to share on Warpcast', 'warning');
+            setStatus('Nexus Testnet', 'text-green-500');
         }
     }
 }
@@ -644,6 +677,47 @@ async function castToFarcaster() {
     console.log('Farcaster SDK not available:', e);
   }
 })();
+
+// FIX #4: Auto-reconnect on page load
+async function tryAutoReconnect() {
+    const currentAccount = getAccount(wagmiConfig);
+    if (currentAccount.isConnected && currentAccount.address) {
+        const currentChainId = getChainId(wagmiConfig);
+        if (currentChainId !== NEXUS_CHAIN_ID_DEC) {
+            setStatus('Wrong Network', 'text-red-500');
+            updateConnectButton('WRONG_NETWORK');
+            ui.userMeta.textContent = formatAddress(currentAccount.address);
+            return false;
+        }
+        
+        userAddress = currentAccount.address;
+        ui.userMeta.textContent = formatAddress(userAddress);
+        setStatus('Nexus Testnet', 'text-green-500');
+        updateConnectButton('CONNECTED');
+        setActionButtonsEnabled(true);
+        
+        try {
+            contractFee = await readContract(wagmiConfig, {
+                address: CONTRACT_ADDRESS,
+                abi: CONTRACT_ABI,
+                functionName: 'fee',
+                chainId: NEXUS_CHAIN_ID_DEC,
+            });
+            
+            await updateCount(true);
+            await updateBadge();
+            await updateAdminUI();
+            fetchLeaderboard();
+            startAutoRefresh();
+            startCooldownAutoRefresh();
+            return true;
+        } catch (e) {
+            console.error('Failed to fetch contract data:', e);
+            return false;
+        }
+    }
+    return false;
+}
 
 // Initialize Wagmi and AppKit
 (async () => {
@@ -728,30 +802,12 @@ async function castToFarcaster() {
             }
         });
 
-        // Check for existing connection
+        // FIX #4: Try auto-reconnect first
         if (!connected) {
-            const currentAccount = getAccount(wagmiConfig);
-            if (currentAccount.isConnected && currentAccount.address) {
-                userAddress = currentAccount.address;
-                
-                const currentChainId = getChainId(wagmiConfig);
-                if (currentChainId !== NEXUS_CHAIN_ID_DEC) {
-                    setStatus('Wrong Network', 'text-red-500');
-                    updateConnectButton('WRONG_NETWORK');
-                } else {
-                    ui.userMeta.textContent = formatAddress(userAddress);
-                    setStatus('Nexus Testnet', 'text-green-500');
-                    updateConnectButton('CONNECTED');
-                    setActionButtonsEnabled(true);
-                    connected = true;
-                }
-            } else {
-                setStatus('Ready to connect', 'text-gray-500');
-                updateConnectButton('DISCONNECTED');
-            }
+            connected = await tryAutoReconnect();
         }
 
-        // Fetch contract fee
+        // If not connected, fetch contract fee and show initial data
         if (connected) {
             try {
                 contractFee = await readContract(wagmiConfig, {
@@ -760,17 +816,12 @@ async function castToFarcaster() {
                     functionName: 'fee',
                     chainId: NEXUS_CHAIN_ID_DEC,
                 });
-                
-                await updateCount(true);
-                await updateBadge();
-                await updateAdminUI();
-                fetchLeaderboard();
-                startAutoRefresh();
-                startCooldownAutoRefresh();
             } catch (e) {
-                console.error('Failed to fetch contract data:', e);
+                console.error('Failed to fetch contract fee:', e);
             }
         } else {
+            setStatus('Ready to connect', 'text-gray-500');
+            updateConnectButton('DISCONNECTED');
             await updateCount(false);
             fetchLeaderboard();
         }
@@ -839,46 +890,78 @@ ui.decrementBtn.onclick = () => sendTransaction('decrement', ui.decrementBtn, 'D
 ui.castBtn.onclick = castToFarcaster;
 ui.copyBtn.onclick = () => copyToClipboard(ui.copyBtn.getAttribute('data-hash'));
 
-// Admin Reset Button
+// FIX #1: Admin Reset Button - Fixed implementation
 ui.resetBtn.onclick = async () => {
+    if (!userAddress) {
+        displayMessage("Please connect your wallet first.", "error");
+        return;
+    }
+    
     const newValueStr = prompt("Enter new counter value:");
-    if (newValueStr !== null) {
-        const newValue = Number(newValueStr);
-        if (!isNaN(newValue) && Number.isInteger(newValue) && newValue >= 0) {
-            let hash;
-            try {
-                const { hash: writeHash } = await writeContract(wagmiConfig, {
-                    address: CONTRACT_ADDRESS,
-                    abi: CONTRACT_ABI,
-                    functionName: 'resetCounter',
-                    args: [BigInt(newValue)],
-                    chainId: NEXUS_CHAIN_ID_DEC,
-                });
-                hash = writeHash;
-
-                displayMessage("Resetting counter...", "info");
-                
-                const receipt = await waitForTransactionReceipt(wagmiConfig, { 
-                    hash, 
-                    chainId: NEXUS_CHAIN_ID_DEC 
-                });
-                
-                if (receipt.status === 'success') {
-                    displayMessage("Counter reset successfully!", "success", hash);
-                    await updateCount(true);
-                    await fetchLeaderboard();
-                } else {
-                    displayMessage('Transaction failed (Status: Reverted).', 'error', hash);
-                }
-            } catch (e) {
-                const reason = e.message || 'Reset failed.';
-                const displayReason = reason.includes('Ownable') 
-                    ? 'Reset failed: Only the contract owner can call this function.' 
-                    : reason;
-                displayMessage("Reset failed: " + displayReason, "error", hash);
-            }
+    if (newValueStr === null) return; // User cancelled
+    
+    const newValue = Number(newValueStr);
+    if (isNaN(newValue) || !Number.isInteger(newValue) || newValue < 0) {
+        displayMessage("Invalid input. Please enter a non-negative whole number.", "error");
+        return;
+    }
+    
+    let hash;
+    const originalBtnText = ui.resetBtn.textContent;
+    
+    try {
+        // Disable button and show loading
+        ui.resetBtn.disabled = true;
+        ui.resetBtn.innerHTML = '<span class="spinner inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></span>Resetting...';
+        
+        displayMessage("Sending reset transaction...", "info");
+        
+        // Send the transaction
+        const result = await writeContract(wagmiConfig, {
+            address: CONTRACT_ADDRESS,
+            abi: CONTRACT_ABI,
+            functionName: 'resetCounter',
+            args: [BigInt(newValue)],
+            chainId: NEXUS_CHAIN_ID_DEC,
+        });
+        
+        hash = result;
+        displayMessage("Waiting for confirmation...", "info", hash);
+        
+        // Wait for confirmation
+        const receipt = await waitForTransactionReceipt(wagmiConfig, { 
+            hash, 
+            chainId: NEXUS_CHAIN_ID_DEC,
+            timeout: 60000 // 60 second timeout
+        });
+        
+        if (receipt.status === 'success') {
+            displayMessage(`✅ Counter reset to ${newValue} successfully!`, "success", hash);
+            await updateCount(true);
+            await fetchLeaderboard();
         } else {
-            displayMessage("Invalid input. Please enter a non-negative whole number.", "error");
+            displayMessage('Transaction failed (Status: Reverted).', 'error', hash);
         }
+    } catch (e) {
+        console.error('Reset error:', e);
+        
+        let displayReason = 'Reset failed.';
+        
+        if (e.message?.includes('User rejected') || e.message?.includes('user rejected')) {
+            displayReason = 'Reset cancelled by user.';
+        } else if (e.message?.includes('OwnableUnauthorizedAccount') || e.message?.includes('Ownable')) {
+            displayReason = 'Reset failed: Only the contract owner can reset the counter.';
+        } else if (e.shortMessage) {
+            displayReason = `Reset failed: ${e.shortMessage}`;
+        } else if (e.message) {
+            const msg = e.message.split('\n')[0].trim();
+            displayReason = `Reset failed: ${msg}`;
+        }
+        
+        displayMessage(displayReason, "error", hash);
+    } finally {
+        // Re-enable button
+        ui.resetBtn.disabled = false;
+        ui.resetBtn.textContent = originalBtnText;
     }
 }
