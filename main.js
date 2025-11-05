@@ -206,7 +206,7 @@ function updateConnectButton(state) {
 
     switch (state) {
         case 'CONNECTED':
-            ui.connectBtn.textContent = '✓ Wallet Connected (Click to Change)';
+            ui.connectBtn.textContent = '✓ Wallet Connected';
             ui.connectBtn.disabled = false; // FIX: Enable button
             ui.connectBtn.classList.add('bg-gray-700', 'hover:bg-gray-600', 'text-white', 'cursor-pointer');
             // FIX: Click to disconnect or open modal
