@@ -11,9 +11,9 @@
   "dependencies": {
     "@farcaster/miniapp-sdk": "latest",
     "@farcaster/miniapp-wagmi-connector": "latest",
-    "@reown/appkit": "latest",
-    "@reown/appkit-adapter-wagmi": "latest",
-    "@wagmi/core": "^2.13.0",
+    "@reown/appkit": "^1.8.2",
+    "@reown/appkit-adapter-wagmi": "^1.8.2",
+    "@wagmi/core": "^2.22.1",
     "@wagmi/connectors": "^5.1.0",
     "buffer": "^6.0.3",
     "viem": "^2.21.0"
