@@ -19,6 +19,7 @@ import {
   waitForTransactionReceipt,
   switchChain,
   getChainId,
+  getBalance,
   http
 } from '@wagmi/core';
 
@@ -28,6 +29,9 @@ import { farcasterMiniApp } from '@farcaster/miniapp-wagmi-connector';
 // Reown AppKit imports
 import { createAppKit } from '@reown/appkit';
 import { WagmiAdapter } from '@reown/appkit-adapter-wagmi';
+
+// Format utilities
+import { formatEther } from 'viem';
 
 // Configuration
 const PROJECT_ID = 'ad03e2d8544cdf786495f370a5fc2e33';
@@ -60,7 +64,10 @@ const ui = {
     incrementBtn: document.getElementById('increment-btn'),
     decrementBtn: document.getElementById('decrement-btn'),
     castBtn: document.getElementById('cast-btn'),
+    twitterBtn: document.getElementById('twitter-btn'),
+    shareButtons: document.getElementById('share-buttons'),
     userMeta: document.getElementById('user-meta'),
+    walletBalance: document.getElementById('wallet-balance'),
     badgeTierContainer: document.getElementById('badge-tier-container'),
     badgeTier: document.getElementById('badge-tier'),
     messageContainer: document.getElementById('message-container'),
@@ -77,6 +84,8 @@ const ui = {
     cooldownTimer: document.getElementById('cooldown-timer'),
     externalBanner: document.getElementById('externalBanner'),
     externalBannerText: document.getElementById('externalBannerText'),
+    txHistoryContainer: document.getElementById('tx-history-container'),
+    txHistoryList: document.getElementById('tx-history-list'),
 };
 
 // State variables
@@ -94,6 +103,11 @@ let wagmiConfig = null;
 let modal = null;
 let isFarcasterEnvironment = false;
 let lastActionType = null;
+let lastCounterValue = 0;
+
+// Transaction history (stored in localStorage)
+const TX_HISTORY_KEY = 'nexus_counter_tx_history';
+const MAX_TX_HISTORY = 5;
 
 // Safe localStorage wrapper
 const safeLocalStorage = {
@@ -125,6 +139,78 @@ const safeLocalStorage = {
   }
 };
 
+// Transaction history functions
+function getTxHistory() {
+    if (!userAddress) return [];
+    const key = `${TX_HISTORY_KEY}_${userAddress.toLowerCase()}`;
+    const stored = safeLocalStorage.getItem(key);
+    try {
+        return stored ? JSON.parse(stored) : [];
+    } catch {
+        return [];
+    }
+}
+
+function saveTxHistory(history) {
+    if (!userAddress) return;
+    const key = `${TX_HISTORY_KEY}_${userAddress.toLowerCase()}`;
+    safeLocalStorage.setItem(key, JSON.stringify(history.slice(0, MAX_TX_HISTORY)));
+}
+
+function addToTxHistory(type, hash) {
+    const history = getTxHistory();
+    history.unshift({
+        type,
+        hash,
+        timestamp: Date.now()
+    });
+    saveTxHistory(history);
+    displayTxHistory();
+}
+
+function displayTxHistory() {
+    const history = getTxHistory();
+    
+    if (history.length === 0) {
+        ui.txHistoryList.innerHTML = '<p class="text-sm text-gray-500 text-center">No transactions yet</p>';
+        ui.txHistoryContainer.classList.add('hidden');
+        return;
+    }
+
+    ui.txHistoryList.innerHTML = history.map((tx, idx) => {
+        const timeAgo = formatTimeAgo(tx.timestamp);
+        const emoji = tx.type === 'increment' ? '📈' : '📉';
+        const action = tx.type === 'increment' ? 'Incremented' : 'Decremented';
+        
+        return `
+            <div class="flex justify-between items-center text-sm p-3 rounded-md app-subtle-box hover:bg-[#252525] transition-colors">
+                <div class="flex items-center gap-2">
+                    <span>${emoji}</span>
+                    <span class="font-medium">${action}</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span class="text-xs text-gray-500">${timeAgo}</span>
+                    <a href="${EXPLORER_URL}/tx/${tx.hash}" target="_blank" rel="noopener noreferrer" 
+                       class="text-xs text-indigo-400 hover:underline font-mono">
+                        ${formatHash(tx.hash)}
+                    </a>
+                </div>
+            </div>
+        `;
+    }).join('');
+    
+    ui.txHistoryContainer.classList.remove('hidden');
+}
+
+function formatTimeAgo(timestamp) {
+    const seconds = Math.floor((Date.now() - timestamp) / 1000);
+    
+    if (seconds < 60) return `${seconds}s ago`;
+    if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+    if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
+    return `${Math.floor(seconds / 86400)}d ago`;
+}
+
 // Improved Farcaster detection
 async function isFarcasterEmbed() {
   return Promise.race([
@@ -152,10 +238,9 @@ async function isFarcasterEmbed() {
   ]);
 }
 
-// Load contract configuration - FIXED PATH
+// Load contract configuration
 async function loadContractConfig() {
     try {
-        // Try multiple paths to find contract.json
         let response = await fetch('./contract.json').catch(() => null);
         if (!response || !response.ok) {
             response = await fetch('/contract.json').catch(() => null);
@@ -200,11 +285,35 @@ function setActionButtonsEnabled(enabled) {
     if (shouldEnable) {
         ui.incDecGroup.classList.remove('hidden');
         ui.incDecGroup.classList.add('flex');
-        ui.castBtn.classList.remove('hidden');
+        ui.shareButtons.classList.remove('hidden');
+        ui.shareButtons.classList.add('flex');
     } else {
         ui.incDecGroup.classList.add('hidden');
         ui.incDecGroup.classList.remove('flex');
-        ui.castBtn.classList.add('hidden');
+        ui.shareButtons.classList.add('hidden');
+        ui.shareButtons.classList.remove('flex');
+    }
+}
+
+// Wallet balance update
+async function updateWalletBalance() {
+    if (!userAddress || !wagmiConfig) {
+        ui.walletBalance.classList.add('hidden');
+        return;
+    }
+    
+    try {
+        const balance = await getBalance(wagmiConfig, {
+            address: userAddress,
+            chainId: NEXUS_CHAIN_ID_DEC,
+        });
+        
+        const formattedBalance = parseFloat(formatEther(balance.value)).toFixed(4);
+        ui.walletBalance.textContent = `💰 ${formattedBalance} NEX`;
+        ui.walletBalance.classList.remove('hidden');
+    } catch (e) {
+        console.error('Failed to fetch balance:', e);
+        ui.walletBalance.classList.add('hidden');
     }
 }
 
@@ -316,17 +425,43 @@ function addSpinner(buttonElement, originalText) {
     buttonElement.innerHTML = `<svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-white inline" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>${originalText}...`;
 }
 
+// Counter animation function
+function animateCounter(from, to) {
+    const duration = 500;
+    const start = Date.now();
+    const diff = to - from;
+    
+    if (diff === 0) return;
+    
+    const animate = () => {
+        const elapsed = Date.now() - start;
+        const progress = Math.min(elapsed / duration, 1);
+        const easedProgress = progress < 0.5 
+            ? 2 * progress * progress 
+            : 1 - Math.pow(-2 * progress + 2, 2) / 2;
+        const current = Math.floor(from + (diff * easedProgress));
+        
+        ui.counterValue.textContent = current.toString();
+        
+        if (progress < 1) {
+            requestAnimationFrame(animate);
+        } else {
+            ui.counterValue.textContent = to.toString();
+        }
+    };
+    
+    requestAnimationFrame(animate);
+}
+
 // Auto-refresh functions
 function startAutoRefresh() {
     if (autoRefreshInterval) return;
     autoRefreshInterval = setInterval(async () => {
         if (userAddress) {
-            const prevValue = ui.counterValue.textContent;
             await updateCount(false);
-            if (ui.counterValue.textContent !== "Error" && ui.counterValue.textContent !== prevValue) {
-                await updateBadge();
-                await fetchLeaderboard();
-            }
+            await updateBadge();
+            await fetchLeaderboard();
+            await updateWalletBalance();
             updateAdminUI();
         }
     }, 5000);
@@ -522,7 +657,9 @@ async function switchToNexus() {
             await updateCount(true);
             await updateBadge();
             await updateAdminUI();
+            await updateWalletBalance();
             fetchLeaderboard();
+            displayTxHistory();
             startAutoRefresh();
             startCooldownAutoRefresh();
         }
@@ -537,7 +674,7 @@ async function switchToNexus() {
     }
 }
 
-// Update counter
+// Update counter with animation
 async function updateCount(triggerAnimation = false) {
     ui.counterValue.classList.add("counter-loading");
     try {
@@ -548,12 +685,17 @@ async function updateCount(triggerAnimation = false) {
             chainId: NEXUS_CHAIN_ID_DEC,
         });
         
-        const newValue = value.toString();
-        if (ui.counterValue.textContent !== newValue && triggerAnimation) {
+        const newValue = Number(value);
+        
+        if (triggerAnimation && lastCounterValue !== newValue) {
+            animateCounter(lastCounterValue, newValue);
             ui.counterValue.classList.add("counter-updated");
             setTimeout(() => ui.counterValue.classList.remove("counter-updated"), 600);
+        } else {
+            ui.counterValue.textContent = newValue.toString();
         }
-        ui.counterValue.textContent = newValue;
+        
+        lastCounterValue = newValue;
     } catch (e) {
         ui.counterValue.textContent = "Error";
         console.error("Read count error:", e);
@@ -595,9 +737,14 @@ async function sendTransaction(methodName, buttonElement, originalText) {
         if (receipt.status === 'success') {
             displayMessage('Transaction successful!', 'success', hash);
             setStatus('Nexus Testnet', 'text-green-500');
+            
+            // Add to transaction history
+            addToTxHistory(methodName, hash);
+            
             await updateCount(true);
             await updateBadge();
             await fetchLeaderboard();
+            await updateWalletBalance();
             await refreshCooldownTimer();
         } else {
             displayMessage('Transaction failed (Status: Reverted).', 'error', hash);
@@ -674,6 +821,27 @@ async function castToFarcaster() {
     }
 }
 
+// Share to Twitter/X
+function shareToTwitter() {
+    if (!lastActionType) {
+        displayMessage('No recent action to tweet about!', 'warning');
+        return;
+    }
+    
+    const action = lastActionType === 'increment' ? 'incremented' : 'decremented';
+    const counterValue = ui.counterValue.textContent;
+    const text = `I just ${action} the Nexus Counter to ${counterValue}! 🎯\n\nTry it yourself: https://nexus-counter.vercel.app\n\n#NexusNetwork #DeFi`;
+    const url = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}`;
+    
+    const popup = window.open(url, '_blank', 'width=600,height=700');
+    
+    if (popup) {
+        displayMessage('Opening Twitter composer...', 'success');
+    } else {
+        displayMessage('Please allow popups to share on Twitter', 'warning');
+    }
+}
+
 // Initialize SDK
 (async () => {
   try {
@@ -710,10 +878,21 @@ async function tryAutoReconnect() {
                 chainId: NEXUS_CHAIN_ID_DEC,
             });
             
-            await updateCount(true);
+            // Get initial counter value before any animations
+            const initialValue = await readContract(wagmiConfig, {
+                address: CONTRACT_ADDRESS,
+                abi: CONTRACT_ABI,
+                functionName: 'count',
+                chainId: NEXUS_CHAIN_ID_DEC,
+            });
+            lastCounterValue = Number(initialValue);
+            ui.counterValue.textContent = lastCounterValue.toString();
+            
             await updateBadge();
             await updateAdminUI();
+            await updateWalletBalance();
             fetchLeaderboard();
+            displayTxHistory();
             startAutoRefresh();
             startCooldownAutoRefresh();
             console.log('Auto-reconnected:', userAddress);
@@ -849,6 +1028,8 @@ async function tryAutoReconnect() {
                         setActionButtonsEnabled(false);
                         stopAutoRefresh();
                         stopCooldownAutoRefresh();
+                        ui.walletBalance.classList.add('hidden');
+                        ui.txHistoryContainer.classList.add('hidden');
                     } else {
                         setStatus('Nexus Testnet', 'text-green-500');
                         updateConnectButton('CONNECTED');
@@ -863,10 +1044,22 @@ async function tryAutoReconnect() {
                             contractFee = fee;
                         }).catch(console.error);
                         
-                        updateCount(true);
+                        // Get initial value before starting updates
+                        readContract(wagmiConfig, {
+                            address: CONTRACT_ADDRESS,
+                            abi: CONTRACT_ABI,
+                            functionName: 'count',
+                            chainId: NEXUS_CHAIN_ID_DEC,
+                        }).then(value => {
+                            lastCounterValue = Number(value);
+                            ui.counterValue.textContent = lastCounterValue.toString();
+                        }).catch(console.error);
+                        
                         updateBadge();
                         updateAdminUI();
+                        updateWalletBalance();
                         fetchLeaderboard();
+                        displayTxHistory();
                         startAutoRefresh();
                         startCooldownAutoRefresh();
                     }
@@ -881,6 +1074,8 @@ async function tryAutoReconnect() {
                     stopCooldownAutoRefresh();
                     ui.cooldownTimer.textContent = '';
                     ui.badgeTierContainer.classList.add('hidden');
+                    ui.walletBalance.classList.add('hidden');
+                    ui.txHistoryContainer.classList.add('hidden');
                 }
             }
         });
@@ -896,9 +1091,10 @@ async function tryAutoReconnect() {
 ui.incrementBtn.onclick = () => sendTransaction('increment', ui.incrementBtn, 'Increment');
 ui.decrementBtn.onclick = () => sendTransaction('decrement', ui.decrementBtn, 'Decrement');
 ui.castBtn.onclick = castToFarcaster;
+ui.twitterBtn.onclick = shareToTwitter;
 ui.copyBtn.onclick = () => copyToClipboard(ui.copyBtn.getAttribute('data-hash'));
 
-// FIXED: Admin Reset Button with proper prompt and validation
+// Admin Reset Button
 ui.resetBtn.onclick = async () => {
     if (!userAddress) {
         displayMessage("Please connect your wallet first.", "error");
@@ -907,18 +1103,15 @@ ui.resetBtn.onclick = async () => {
     
     console.log('🔧 Reset button clicked');
     
-    // Use native browser prompt - this WILL work
     const newValueStr = window.prompt("Enter new counter value (must be a non-negative whole number):");
     
     console.log('📝 User entered:', newValueStr);
     
-    // User cancelled
     if (newValueStr === null) {
         console.log('❌ Reset cancelled by user');
         return;
     }
     
-    // Validate input
     const trimmedValue = newValueStr.trim();
     const newValue = Number(trimmedValue);
     
@@ -936,7 +1129,6 @@ ui.resetBtn.onclick = async () => {
     const originalBtnText = ui.resetBtn.textContent;
     
     try {
-        // Disable button and show loading
         ui.resetBtn.disabled = true;
         ui.resetBtn.innerHTML = '<svg class="animate-spin inline-block w-4 h-4 mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>Resetting...';
         
@@ -949,7 +1141,6 @@ ui.resetBtn.onclick = async () => {
             userAddress
         });
         
-        // Send the transaction
         const result = await writeContract(wagmiConfig, {
             address: CONTRACT_ADDRESS,
             abi: CONTRACT_ABI,
@@ -963,17 +1154,17 @@ ui.resetBtn.onclick = async () => {
         console.log('✅ Transaction sent:', hash);
         displayMessage("Waiting for confirmation...", "info", hash);
         
-        // Wait for confirmation
         const receipt = await waitForTransactionReceipt(wagmiConfig, { 
             hash, 
             chainId: NEXUS_CHAIN_ID_DEC,
-            timeout: 60000 // 60 second timeout
+            timeout: 60000
         });
         
         console.log('📦 Transaction receipt:', receipt);
         
         if (receipt.status === 'success') {
             displayMessage(`✅ Counter reset to ${newValue} successfully!`, "success", hash);
+            lastCounterValue = newValue;
             await updateCount(true);
             await fetchLeaderboard();
             console.log('🎉 Reset completed successfully');
@@ -999,7 +1190,6 @@ ui.resetBtn.onclick = async () => {
         
         displayMessage(displayReason, "error", hash);
     } finally {
-        // Re-enable button
         ui.resetBtn.disabled = false;
         ui.resetBtn.textContent = originalBtnText;
         console.log('🔄 Reset button restored');
