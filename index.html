@@ -72,7 +72,6 @@
             border-color: rgba(255, 255, 255, 0.3);
         }
 
-        /* FIX #3: Scrollable leaderboard with top 5 visible */
         #leaderboard-list {
             max-height: 280px;
             overflow-y: auto;
@@ -95,6 +94,25 @@
 
         #leaderboard-list::-webkit-scrollbar-thumb:hover {
             background: #764ba2;
+        }
+
+        /* Transaction history styles */
+        #tx-history-list {
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        #tx-history-list::-webkit-scrollbar {
+            width: 4px;
+        }
+
+        #tx-history-list::-webkit-scrollbar-track {
+            background: #1a1a1a;
+        }
+
+        #tx-history-list::-webkit-scrollbar-thumb {
+            background: #667eea;
+            border-radius: 2px;
         }
     </style>
 </head>
@@ -123,6 +141,8 @@
                         <span class="text-xs font-medium uppercase tracking-wider mr-2" style="color: var(--subtle-text);">Wallet:</span>
                         <span id="user-meta" class="text-sm font-mono" style="color: var(--foreground);">Not Connected</span>
                     </div>
+                    <!-- Wallet Balance Display -->
+                    <div id="wallet-balance" class="text-xs mt-1 font-mono text-green-400 hidden"></div>
                     <div id="cooldown-timer" class="text-xs mt-2 font-bold" style="color: #f9cf45;"></div>
                 </div>
             </div>
@@ -141,7 +161,6 @@
                     Connect Wallet
                 </button>
 
-                <!-- FIX #2: Message/Error Display moved here (below connect button, above action buttons) -->
                 <div id="message-container" class="p-3 rounded-xl text-center hidden">
                     <div id="message-text" class="font-medium"></div>
                     <div id="tx-details" class="mt-2 text-sm flex justify-center items-center gap-2 hidden">
@@ -165,10 +184,23 @@
                     </button>
                 </div>
 
-                <!-- Cast Button -->
-                <button id="cast-btn" class="hidden w-full py-3 px-6 text-lg font-medium rounded-full bg-purple-600 hover:bg-purple-700 text-white shadow-xl transition-all duration-300 focus:outline-none focus:ring-4 focus:ring-purple-500 focus:ring-opacity-50 active:scale-[0.98]">
-                    📣 Cast Your Action
-                </button>
+                <!-- Share Buttons Row -->
+                <div id="share-buttons" class="hidden flex space-x-3">
+                    <button id="cast-btn" class="flex-1 py-3 px-6 text-base font-medium rounded-full bg-purple-600 hover:bg-purple-700 text-white shadow-xl transition-all duration-300 focus:outline-none focus:ring-4 focus:ring-purple-500 focus:ring-opacity-50 active:scale-[0.98]">
+                        📣 Cast
+                    </button>
+                    <button id="twitter-btn" class="flex-1 py-3 px-6 text-base font-medium rounded-full bg-blue-500 hover:bg-blue-600 text-white shadow-xl transition-all duration-300 focus:outline-none focus:ring-4 focus:ring-blue-400 focus:ring-opacity-50 active:scale-[0.98]">
+                        🐦 Tweet
+                    </button>
+                </div>
+            </div>
+
+            <!-- Transaction History Section -->
+            <div id="tx-history-container" class="hidden mt-6 p-4 border border-gray-700 rounded-xl app-subtle-box">
+                <h2 class="text-lg font-semibold mb-3 text-center">Your Recent Transactions</h2>
+                <div id="tx-history-list" class="space-y-2">
+                    <p class="text-sm text-gray-500 text-center">No transactions yet</p>
+                </div>
             </div>
 
             <div id="admin-controls" class="hidden p-4 border border-gray-700 rounded-xl bg-gray-900 mt-6">
@@ -176,7 +208,6 @@
                 <button id="reset-btn" class="w-full px-4 py-3 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700 transition duration-300">Reset Counter</button>
             </div>
 
-            <!-- FIX #3: Leaderboard with scrollable container -->
             <div id="leaderboard-container" class="hidden mt-6 p-4 border border-gray-700 rounded-xl app-subtle-box">
                 <h2 class="text-lg font-semibold mb-3 text-center">Top 20 Leaderboard</h2>
                 <div id="leaderboard-list" class="space-y-1"></div>
