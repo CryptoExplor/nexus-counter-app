@@ -826,18 +826,37 @@ function setupEventListeners() {
                 console.log('📊 CounterChanged event detected:', logs);
                 
                 for (const log of logs) {
-                    const { user, delta, newCount } = log.args;
-                    console.log(`User ${user} changed counter by ${delta} to ${newCount}`);
-                    
-                    // Update counter with animation
-                    const newValue = Number(newCount);
-                    animateCounter(lastCounterValue, newValue);
-                    ui.counterValue.classList.add("counter-updated");
-                    setTimeout(() => ui.counterValue.classList.remove("counter-updated"), 600);
-                    lastCounterValue = newValue;
-                    
-                    // Update leaderboard
-                    await fetchLeaderboard();
+                    try {
+                        // Safely extract args with fallback
+                        if (!log.args) {
+                            console.warn('Event log missing args:', log);
+                            continue;
+                        }
+                        
+                        const { user, delta, newCount } = log.args;
+                        
+                        // Validate args exist
+                        if (!newCount) {
+                            console.warn('Event missing newCount:', log.args);
+                            continue;
+                        }
+                        
+                        console.log(`User ${user} changed counter by ${delta} to ${newCount}`);
+                        
+                        // Update counter with animation
+                        const newValue = Number(newCount);
+                        if (!isNaN(newValue)) {
+                            animateCounter(lastCounterValue, newValue);
+                            ui.counterValue.classList.add("counter-updated");
+                            setTimeout(() => ui.counterValue.classList.remove("counter-updated"), 600);
+                            lastCounterValue = newValue;
+                            
+                            // Update leaderboard
+                            await fetchLeaderboard();
+                        }
+                    } catch (error) {
+                        console.error('Error processing CounterChanged event:', error, log);
+                    }
                 }
             },
             onError: (error) => {
@@ -857,12 +876,21 @@ function setupEventListeners() {
                 console.log('🏆 BadgeAssigned event detected:', logs);
                 
                 for (const log of logs) {
-                    const { user, tokenId, tier } = log.args;
-                    
-                    // Only update if it's for the current user
-                    if (userAddress && user.toLowerCase() === userAddress.toLowerCase()) {
-                        console.log(`Badge assigned to you! Token: ${tokenId}, Tier: ${tier}`);
-                        await updateBadge();
+                    try {
+                        if (!log.args) {
+                            console.warn('BadgeAssigned event missing args:', log);
+                            continue;
+                        }
+                        
+                        const { user, tokenId, tier } = log.args;
+                        
+                        // Only update if it's for the current user
+                        if (userAddress && user && user.toLowerCase() === userAddress.toLowerCase()) {
+                            console.log(`Badge assigned to you! Token: ${tokenId}, Tier: ${tier}`);
+                            await updateBadge();
+                        }
+                    } catch (error) {
+                        console.error('Error processing BadgeAssigned event:', error, log);
                     }
                 }
             },
@@ -883,18 +911,35 @@ function setupEventListeners() {
                 console.log('🔄 CounterReset event detected:', logs);
                 
                 for (const log of logs) {
-                    const { newValue } = log.args;
-                    console.log(`Counter reset to ${newValue}`);
-                    
-                    // Update counter
-                    const resetValue = Number(newValue);
-                    animateCounter(lastCounterValue, resetValue);
-                    ui.counterValue.classList.add("counter-updated");
-                    setTimeout(() => ui.counterValue.classList.remove("counter-updated"), 600);
-                    lastCounterValue = resetValue;
-                    
-                    displayMessage(`Counter was reset to ${resetValue}`, 'info');
-                    await fetchLeaderboard();
+                    try {
+                        if (!log.args) {
+                            console.warn('CounterReset event missing args:', log);
+                            continue;
+                        }
+                        
+                        const { newValue } = log.args;
+                        
+                        if (newValue === undefined) {
+                            console.warn('CounterReset event missing newValue:', log.args);
+                            continue;
+                        }
+                        
+                        console.log(`Counter reset to ${newValue}`);
+                        
+                        // Update counter
+                        const resetValue = Number(newValue);
+                        if (!isNaN(resetValue)) {
+                            animateCounter(lastCounterValue, resetValue);
+                            ui.counterValue.classList.add("counter-updated");
+                            setTimeout(() => ui.counterValue.classList.remove("counter-updated"), 600);
+                            lastCounterValue = resetValue;
+                            
+                            displayMessage(`Counter was reset to ${resetValue}`, 'info');
+                            await fetchLeaderboard();
+                        }
+                    } catch (error) {
+                        console.error('Error processing CounterReset event:', error, log);
+                    }
                 }
             },
             onError: (error) => {
