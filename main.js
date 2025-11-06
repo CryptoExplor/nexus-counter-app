@@ -152,19 +152,28 @@ async function isFarcasterEmbed() {
   ]);
 }
 
-// Load contract configuration
+// Load contract configuration - FIXED PATH
 async function loadContractConfig() {
     try {
-        const response = await fetch('./contract.json');
-        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+        // Try multiple paths to find contract.json
+        let response = await fetch('./contract.json').catch(() => null);
+        if (!response || !response.ok) {
+            response = await fetch('/contract.json').catch(() => null);
+        }
+        if (!response || !response.ok) {
+            throw new Error('Contract configuration file not found');
+        }
+        
         const data = await response.json();
         CONTRACT_ADDRESS = data.address;
         CONTRACT_ABI = data.abi;
-        console.log('Contract loaded:', CONTRACT_ADDRESS);
+        console.log('✅ Contract loaded successfully:', CONTRACT_ADDRESS);
+        return true;
     } catch (error) {
-        console.error("Could not load contract.json:", error);
+        console.error("❌ Could not load contract.json:", error);
         displayMessage("Error: Could not load contract configuration.", 'error');
         ui.connectBtn.disabled = true;
+        return false;
     }
 }
 
@@ -199,7 +208,7 @@ function setActionButtonsEnabled(enabled) {
     }
 }
 
-// FIX #4: Smarter wallet connection button
+// Smarter wallet connection button
 function updateConnectButton(state) {
     ui.connectBtn.disabled = false;
     ui.connectBtn.onclick = null;
@@ -211,7 +220,6 @@ function updateConnectButton(state) {
             ui.connectBtn.disabled = false;
             ui.connectBtn.classList.add('bg-gray-700', 'hover:bg-gray-600', 'text-white', 'cursor-pointer');
             ui.connectBtn.onclick = async () => {
-                // FIX #4: Better UX - direct options without annoying confirm
                 if (modal) {
                     modal.open();
                 }
@@ -231,16 +239,12 @@ function updateConnectButton(state) {
         default:
             ui.connectBtn.textContent = 'Connect Wallet';
             ui.connectBtn.classList.add('bg-white', 'hover:bg-gray-200', 'text-black');
-            // FIX #4: Smart connection - check if already connected first
             ui.connectBtn.onclick = async () => {
                 if (modal) {
-                    // Check if already connected in AppKit
                     const account = getAccount(wagmiConfig);
                     if (account.isConnected && account.address) {
-                        // Already connected, just restore state
                         await tryAutoReconnect();
                     } else {
-                        // Not connected, open modal
                         modal.open();
                     }
                 }
@@ -394,7 +398,7 @@ function stopCooldownAutoRefresh() {
 // Admin UI update
 async function updateAdminUI() {
     if (!userAddress || !CONTRACT_ADDRESS) {
-        ui.adminControls.style.display = "none";
+        ui.adminControls.classList.add('hidden');
         return;
     }
     try {
@@ -406,10 +410,16 @@ async function updateAdminUI() {
         });
         
         const isOwner = userAddress.toLowerCase() === ownerAddress.toLowerCase();
-        ui.adminControls.style.display = isOwner ? "block" : "none";
+        console.log('🔑 Owner check:', { userAddress, ownerAddress, isOwner });
+        
+        if (isOwner) {
+            ui.adminControls.classList.remove('hidden');
+        } else {
+            ui.adminControls.classList.add('hidden');
+        }
     } catch (e) {
         console.error("Failed to check owner status:", e);
-        ui.adminControls.style.display = "none";
+        ui.adminControls.classList.add('hidden');
     }
 }
 
@@ -447,11 +457,11 @@ async function fetchLeaderboard() {
                 </div>`;
             }
         }
-        ui.leaderboardContainer.style.display = "block";
+        ui.leaderboardContainer.classList.remove('hidden');
 
     } catch (e) {
         console.error("Leaderboard error:", e);
-        ui.leaderboardContainer.style.display = "none";
+        ui.leaderboardContainer.classList.add('hidden');
     }
 }
 
@@ -674,7 +684,7 @@ async function castToFarcaster() {
   }
 })();
 
-// FIX #4: Auto-reconnect on page load
+// Auto-reconnect on page load
 async function tryAutoReconnect() {
     const currentAccount = getAccount(wagmiConfig);
     if (currentAccount.isConnected && currentAccount.address) {
@@ -719,9 +729,9 @@ async function tryAutoReconnect() {
 // Initialize Wagmi and AppKit
 (async () => {
     try {
-        await loadContractConfig();
+        const configLoaded = await loadContractConfig();
         
-        if (!CONTRACT_ADDRESS) {
+        if (!configLoaded || !CONTRACT_ADDRESS) {
             setStatus('Config Load Failed', 'text-red-500');
             updateConnectButton('DISCONNECTED');
             ui.connectBtn.disabled = true;
@@ -734,6 +744,7 @@ async function tryAutoReconnect() {
         console.log('=== ENVIRONMENT DETECTION ===');
         console.log('Detected as Farcaster:', isFarcasterEnvironment);
         console.log('Window location:', window.location.href);
+        console.log('Contract Address:', CONTRACT_ADDRESS);
         console.log('============================');
         
         // Set banner based on environment
@@ -799,7 +810,7 @@ async function tryAutoReconnect() {
             }
         });
 
-        // FIX #4: Try auto-reconnect first
+        // Try auto-reconnect first
         if (!connected) {
             connected = await tryAutoReconnect();
         }
@@ -887,28 +898,39 @@ ui.decrementBtn.onclick = () => sendTransaction('decrement', ui.decrementBtn, 'D
 ui.castBtn.onclick = castToFarcaster;
 ui.copyBtn.onclick = () => copyToClipboard(ui.copyBtn.getAttribute('data-hash'));
 
-// FIX #1: Admin Reset Button - Completely Fixed with proper prompt
+// FIXED: Admin Reset Button with proper prompt and validation
 ui.resetBtn.onclick = async () => {
     if (!userAddress) {
         displayMessage("Please connect your wallet first.", "error");
         return;
     }
     
-    // FIX #1: Use native browser prompt
+    console.log('🔧 Reset button clicked');
+    
+    // Use native browser prompt - this WILL work
     const newValueStr = window.prompt("Enter new counter value (must be a non-negative whole number):");
+    
+    console.log('📝 User entered:', newValueStr);
     
     // User cancelled
     if (newValueStr === null) {
-        console.log('Reset cancelled by user');
+        console.log('❌ Reset cancelled by user');
         return;
     }
     
     // Validate input
-    const newValue = Number(newValueStr);
+    const trimmedValue = newValueStr.trim();
+    const newValue = Number(trimmedValue);
+    
+    console.log('🔍 Validating:', { trimmedValue, newValue, isNaN: isNaN(newValue), isInteger: Number.isInteger(newValue) });
+    
     if (isNaN(newValue) || !Number.isInteger(newValue) || newValue < 0) {
         displayMessage("Invalid input. Please enter a non-negative whole number.", "error");
+        console.log('❌ Validation failed');
         return;
     }
+    
+    console.log('✅ Validation passed, proceeding with reset to:', newValue);
     
     let hash;
     const originalBtnText = ui.resetBtn.textContent;
@@ -920,12 +942,15 @@ ui.resetBtn.onclick = async () => {
         
         displayMessage("Sending reset transaction...", "info");
         
-        console.log('Sending reset transaction with value:', newValue);
-        console.log('Contract address:', CONTRACT_ADDRESS);
-        console.log('Chain ID:', NEXUS_CHAIN_ID_DEC);
+        console.log('📤 Sending reset transaction with:', {
+            value: newValue,
+            address: CONTRACT_ADDRESS,
+            chainId: NEXUS_CHAIN_ID_DEC,
+            userAddress
+        });
         
         // Send the transaction
-        hash = await writeContract(wagmiConfig, {
+        const result = await writeContract(wagmiConfig, {
             address: CONTRACT_ADDRESS,
             abi: CONTRACT_ABI,
             functionName: 'resetCounter',
@@ -933,7 +958,9 @@ ui.resetBtn.onclick = async () => {
             chainId: NEXUS_CHAIN_ID_DEC,
         });
         
-        console.log('Transaction sent:', hash);
+        hash = result;
+        
+        console.log('✅ Transaction sent:', hash);
         displayMessage("Waiting for confirmation...", "info", hash);
         
         // Wait for confirmation
@@ -943,17 +970,19 @@ ui.resetBtn.onclick = async () => {
             timeout: 60000 // 60 second timeout
         });
         
-        console.log('Transaction receipt:', receipt);
+        console.log('📦 Transaction receipt:', receipt);
         
         if (receipt.status === 'success') {
             displayMessage(`✅ Counter reset to ${newValue} successfully!`, "success", hash);
             await updateCount(true);
             await fetchLeaderboard();
+            console.log('🎉 Reset completed successfully');
         } else {
             displayMessage('Transaction failed (Status: Reverted).', 'error', hash);
+            console.log('❌ Transaction reverted');
         }
     } catch (e) {
-        console.error('Reset error:', e);
+        console.error('❌ Reset error:', e);
         
         let displayReason = 'Reset failed.';
         
@@ -973,5 +1002,6 @@ ui.resetBtn.onclick = async () => {
         // Re-enable button
         ui.resetBtn.disabled = false;
         ui.resetBtn.textContent = originalBtnText;
+        console.log('🔄 Reset button restored');
     }
 }
