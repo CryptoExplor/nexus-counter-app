@@ -20,6 +20,7 @@ import {
   switchChain,
   getChainId,
   getBalance,
+  watchContractEvent,
   http
 } from '@wagmi/core';
 
@@ -70,6 +71,7 @@ const ui = {
     walletBalance: document.getElementById('wallet-balance'),
     badgeTierContainer: document.getElementById('badge-tier-container'),
     badgeTier: document.getElementById('badge-tier'),
+    badgeSkeleton: document.getElementById('badge-skeleton'),
     messageContainer: document.getElementById('message-container'),
     messageText: document.getElementById('message-text'),
     txDetails: document.getElementById('tx-details'),
@@ -80,12 +82,15 @@ const ui = {
     resetBtn: document.getElementById('reset-btn'),
     leaderboardContainer: document.getElementById('leaderboard-container'),
     leaderboardList: document.getElementById('leaderboard-list'),
+    leaderboardSkeleton: document.getElementById('leaderboard-skeleton'),
     userRank: document.getElementById('user-rank'),
     cooldownTimer: document.getElementById('cooldown-timer'),
     externalBanner: document.getElementById('externalBanner'),
     externalBannerText: document.getElementById('externalBannerText'),
     txHistoryContainer: document.getElementById('tx-history-container'),
     txHistoryList: document.getElementById('tx-history-list'),
+    txProgress: document.getElementById('tx-progress'),
+    confettiContainer: document.getElementById('confetti-container'),
 };
 
 // State variables
@@ -104,6 +109,9 @@ let modal = null;
 let isFarcasterEnvironment = false;
 let lastActionType = null;
 let lastCounterValue = 0;
+let eventUnwatchFns = [];
+let isRefreshing = false;
+let previousBadgeTier = 0;
 
 // Transaction history (stored in localStorage)
 const TX_HISTORY_KEY = 'nexus_counter_tx_history';
@@ -209,6 +217,62 @@ function formatTimeAgo(timestamp) {
     if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
     if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
     return `${Math.floor(seconds / 86400)}d ago`;
+}
+
+// Confetti animation
+function triggerConfetti() {
+    const colors = ['#667eea', '#764ba2', '#f093fb', '#4facfe', '#43e97b', '#fa709a'];
+    const confettiCount = 50;
+    
+    for (let i = 0; i < confettiCount; i++) {
+        const confetti = document.createElement('div');
+        confetti.className = 'confetti';
+        confetti.style.left = Math.random() * 100 + '%';
+        confetti.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+        confetti.style.animationDuration = (Math.random() * 2 + 2) + 's';
+        confetti.style.animationDelay = (Math.random() * 0.5) + 's';
+        
+        ui.confettiContainer.appendChild(confetti);
+        
+        setTimeout(() => confetti.remove(), 4000);
+    }
+}
+
+// Badge milestone celebration
+function celebrateBadgeMilestone(newTier) {
+    if (newTier > previousBadgeTier && newTier > 0) {
+        // Trigger confetti
+        triggerConfetti();
+        
+        // Animate badge
+        ui.badgeTierContainer.classList.add('badge-earned');
+        setTimeout(() => {
+            ui.badgeTierContainer.classList.remove('badge-earned');
+        }, 600);
+        
+        // Show celebration message
+        const tierNames = {
+            1: 'Bronze Badge',
+            2: 'Silver Badge',
+            3: 'Gold Badge',
+            4: 'Platinum Badge',
+            5: 'Diamond Badge',
+            6: 'Master Badge',
+            7: 'Legendary Badge'
+        };
+        
+        displayMessage(`🎉 Congratulations! You earned the ${tierNames[newTier]}!`, 'success');
+    }
+    previousBadgeTier = newTier;
+}
+
+// Show/hide transaction progress bar
+function showTxProgress() {
+    ui.txProgress.classList.remove('hidden');
+}
+
+function hideTxProgress() {
+    ui.txProgress.classList.add('hidden');
 }
 
 // Improved Farcaster detection
@@ -362,7 +426,7 @@ function updateConnectButton(state) {
     }
 }
 
-function displayMessage(message, type = 'info', hash = null) {
+function displayMessage(message, type = 'info', hash = null, isPending = false) {
     let baseClasses = 'p-3 rounded-xl text-center transition-all duration-300';
     let duration = 5000;
     if (messageTimeoutId) clearTimeout(messageTimeoutId);
@@ -390,11 +454,19 @@ function displayMessage(message, type = 'info', hash = null) {
         ui.txLink.textContent = formatHash(hash);
         ui.txDetails.classList.remove('hidden');
         ui.copyBtn.setAttribute('data-hash', hash);
+        
+        // Show/hide pending indicator
+        const pendingIndicator = ui.txDetails.querySelector('.tx-pending-indicator');
+        if (pendingIndicator) {
+            pendingIndicator.style.display = isPending ? 'inline-block' : 'none';
+        }
     }
     
-    messageTimeoutId = setTimeout(() => {
-        ui.messageContainer.classList.add('hidden');
-    }, duration);
+    if (!isPending) {
+        messageTimeoutId = setTimeout(() => {
+            ui.messageContainer.classList.add('hidden');
+        }, duration);
+    }
 }
 
 function copyToClipboard(text) {
@@ -453,18 +525,24 @@ function animateCounter(from, to) {
     requestAnimationFrame(animate);
 }
 
-// Auto-refresh functions
+// Auto-refresh functions with race condition protection
 function startAutoRefresh() {
     if (autoRefreshInterval) return;
     autoRefreshInterval = setInterval(async () => {
-        if (userAddress) {
-            await updateCount(false);
-            await updateBadge();
-            await fetchLeaderboard();
-            await updateWalletBalance();
-            updateAdminUI();
+        if (userAddress && !isRefreshing) {
+            isRefreshing = true;
+            try {
+                await Promise.all([
+                    updateWalletBalance(),
+                    updateAdminUI()
+                ]);
+            } catch (error) {
+                console.error('Auto-refresh error:', error);
+            } finally {
+                isRefreshing = false;
+            }
         }
-    }, 5000);
+    }, 10000); // Reduced to 10 seconds since we have event listening
 }
 
 function stopAutoRefresh() {
@@ -490,6 +568,7 @@ async function refreshCooldownTimer() {
         });
         const lastActionSec = Number(stats[2]);
         cooldownEndTime = (lastActionSec + 3600) * 1000;
+        updateCooldownDisplay();
     } catch (e) {
         console.error("Error fetching cooldown:", e);
         ui.cooldownTimer.textContent = "";
@@ -514,7 +593,7 @@ function updateCooldownDisplay() {
 
 function startCooldownAutoRefresh() {
     stopCooldownAutoRefresh();
-    cooldownIntervalId = setInterval(refreshCooldownTimer, 5000);
+    cooldownIntervalId = setInterval(refreshCooldownTimer, 30000); // Check every 30s
     refreshCooldownTimer();
     cooldownDisplayIntervalId = setInterval(updateCooldownDisplay, 1000);
 }
@@ -545,7 +624,6 @@ async function updateAdminUI() {
         });
         
         const isOwner = userAddress.toLowerCase() === ownerAddress.toLowerCase();
-        console.log('🔑 Owner check:', { userAddress, ownerAddress, isOwner });
         
         if (isOwner) {
             ui.adminControls.classList.remove('hidden');
@@ -558,22 +636,27 @@ async function updateAdminUI() {
     }
 }
 
-// Leaderboard
+// Leaderboard with skeleton loader
 async function fetchLeaderboard() {
     try {
-        const addresses = await readContract(wagmiConfig, {
-            address: CONTRACT_ADDRESS,
-            abi: CONTRACT_ABI,
-            functionName: 'getTopAddresses',
-            chainId: NEXUS_CHAIN_ID_DEC,
-        });
+        // Show skeleton while loading
+        ui.leaderboardSkeleton.classList.remove('hidden');
+        ui.leaderboardContainer.classList.add('hidden');
         
-        const counts = await readContract(wagmiConfig, {
-            address: CONTRACT_ADDRESS,
-            abi: CONTRACT_ABI,
-            functionName: 'getTopCounts',
-            chainId: NEXUS_CHAIN_ID_DEC,
-        });
+        const [addresses, counts] = await Promise.all([
+            readContract(wagmiConfig, {
+                address: CONTRACT_ADDRESS,
+                abi: CONTRACT_ABI,
+                functionName: 'getTopAddresses',
+                chainId: NEXUS_CHAIN_ID_DEC,
+            }),
+            readContract(wagmiConfig, {
+                address: CONTRACT_ADDRESS,
+                abi: CONTRACT_ABI,
+                functionName: 'getTopCounts',
+                chainId: NEXUS_CHAIN_ID_DEC,
+            })
+        ]);
 
         ui.leaderboardList.innerHTML = "";
         
@@ -592,21 +675,31 @@ async function fetchLeaderboard() {
                 </div>`;
             }
         }
+        
+        // Hide skeleton, show content
+        ui.leaderboardSkeleton.classList.add('hidden');
         ui.leaderboardContainer.classList.remove('hidden');
 
     } catch (e) {
         console.error("Leaderboard error:", e);
+        ui.leaderboardSkeleton.classList.add('hidden');
         ui.leaderboardContainer.classList.add('hidden');
     }
 }
 
-// Badge update
+// Badge update with skeleton loader
 async function updateBadge() {
     if (!userAddress || !CONTRACT_ADDRESS) {
+        ui.badgeSkeleton.classList.add('hidden');
         ui.badgeTierContainer.classList.add('hidden');
         return;
     }
+    
     try {
+        // Show skeleton while loading
+        ui.badgeSkeleton.classList.remove('hidden');
+        ui.badgeTierContainer.classList.add('hidden');
+        
         const stats = await readContract(wagmiConfig, {
             address: CONTRACT_ADDRESS,
             abi: CONTRACT_ABI,
@@ -628,12 +721,19 @@ async function updateBadge() {
         
         ui.badgeTier.textContent = tierText;
         
-        tierValue > 0
-            ? ui.badgeTierContainer.classList.remove('hidden')
-            : ui.badgeTierContainer.classList.add('hidden');
+        // Hide skeleton, show badge
+        ui.badgeSkeleton.classList.add('hidden');
+        
+        if (tierValue > 0) {
+            ui.badgeTierContainer.classList.remove('hidden');
+            celebrateBadgeMilestone(tierValue);
+        } else {
+            ui.badgeTierContainer.classList.add('hidden');
+        }
 
     } catch (e) {
         console.error("Failed to fetch badge tier:", e);
+        ui.badgeSkeleton.classList.add('hidden');
         ui.badgeTierContainer.classList.add('hidden');
     }
 }
@@ -662,6 +762,7 @@ async function switchToNexus() {
             displayTxHistory();
             startAutoRefresh();
             startCooldownAutoRefresh();
+            setupEventListeners();
         }
     } catch (error) {
         const msg = error.message?.includes('rejected') 
@@ -705,7 +806,124 @@ async function updateCount(triggerAnimation = false) {
     }
 }
 
-// Send transaction
+// EVENT LISTENING - Listen to contract events in real-time
+function setupEventListeners() {
+    if (!wagmiConfig || !CONTRACT_ADDRESS) return;
+    
+    console.log('🎧 Setting up event listeners...');
+    
+    // Clean up any existing listeners
+    cleanupEventListeners();
+    
+    try {
+        // Listen for CounterChanged events
+        const counterChangedUnwatch = watchContractEvent(wagmiConfig, {
+            address: CONTRACT_ADDRESS,
+            abi: CONTRACT_ABI,
+            eventName: 'CounterChanged',
+            chainId: NEXUS_CHAIN_ID_DEC,
+            onLogs: async (logs) => {
+                console.log('📊 CounterChanged event detected:', logs);
+                
+                for (const log of logs) {
+                    const { user, delta, newCount } = log.args;
+                    console.log(`User ${user} changed counter by ${delta} to ${newCount}`);
+                    
+                    // Update counter with animation
+                    const newValue = Number(newCount);
+                    animateCounter(lastCounterValue, newValue);
+                    ui.counterValue.classList.add("counter-updated");
+                    setTimeout(() => ui.counterValue.classList.remove("counter-updated"), 600);
+                    lastCounterValue = newValue;
+                    
+                    // Update leaderboard
+                    await fetchLeaderboard();
+                }
+            },
+            onError: (error) => {
+                console.error('Error watching CounterChanged events:', error);
+            }
+        });
+        
+        eventUnwatchFns.push(counterChangedUnwatch);
+        
+        // Listen for BadgeAssigned events
+        const badgeAssignedUnwatch = watchContractEvent(wagmiConfig, {
+            address: CONTRACT_ADDRESS,
+            abi: CONTRACT_ABI,
+            eventName: 'BadgeAssigned',
+            chainId: NEXUS_CHAIN_ID_DEC,
+            onLogs: async (logs) => {
+                console.log('🏆 BadgeAssigned event detected:', logs);
+                
+                for (const log of logs) {
+                    const { user, tokenId, tier } = log.args;
+                    
+                    // Only update if it's for the current user
+                    if (userAddress && user.toLowerCase() === userAddress.toLowerCase()) {
+                        console.log(`Badge assigned to you! Token: ${tokenId}, Tier: ${tier}`);
+                        await updateBadge();
+                    }
+                }
+            },
+            onError: (error) => {
+                console.error('Error watching BadgeAssigned events:', error);
+            }
+        });
+        
+        eventUnwatchFns.push(badgeAssignedUnwatch);
+        
+        // Listen for CounterReset events (admin only)
+        const counterResetUnwatch = watchContractEvent(wagmiConfig, {
+            address: CONTRACT_ADDRESS,
+            abi: CONTRACT_ABI,
+            eventName: 'CounterReset',
+            chainId: NEXUS_CHAIN_ID_DEC,
+            onLogs: async (logs) => {
+                console.log('🔄 CounterReset event detected:', logs);
+                
+                for (const log of logs) {
+                    const { newValue } = log.args;
+                    console.log(`Counter reset to ${newValue}`);
+                    
+                    // Update counter
+                    const resetValue = Number(newValue);
+                    animateCounter(lastCounterValue, resetValue);
+                    ui.counterValue.classList.add("counter-updated");
+                    setTimeout(() => ui.counterValue.classList.remove("counter-updated"), 600);
+                    lastCounterValue = resetValue;
+                    
+                    displayMessage(`Counter was reset to ${resetValue}`, 'info');
+                    await fetchLeaderboard();
+                }
+            },
+            onError: (error) => {
+                console.error('Error watching CounterReset events:', error);
+            }
+        });
+        
+        eventUnwatchFns.push(counterResetUnwatch);
+        
+        console.log('✅ Event listeners set up successfully');
+        
+    } catch (error) {
+        console.error('Failed to setup event listeners:', error);
+    }
+}
+
+function cleanupEventListeners() {
+    console.log('🧹 Cleaning up event listeners...');
+    eventUnwatchFns.forEach(unwatch => {
+        try {
+            unwatch();
+        } catch (e) {
+            console.error('Error unwatching event:', e);
+        }
+    });
+    eventUnwatchFns = [];
+}
+
+// Send transaction with progress indicator
 async function sendTransaction(methodName, buttonElement, originalText) {
     if (!userAddress || buttonElement.disabled) return;
     setActionButtonsEnabled(false);
@@ -729,28 +947,36 @@ async function sendTransaction(methodName, buttonElement, originalText) {
         buttonElement.textContent = 'Waiting for Tx...';
         setStatus('Transaction sent, waiting for mining...', 'text-orange-500');
         
+        // Show progress bar and pending message
+        showTxProgress();
+        displayMessage('Transaction pending...', 'info', hash, true);
+        
         const receipt = await waitForTransactionReceipt(wagmiConfig, { 
             hash, 
             chainId: NEXUS_CHAIN_ID_DEC 
         });
         
+        // Hide progress bar
+        hideTxProgress();
+        
         if (receipt.status === 'success') {
-            displayMessage('Transaction successful!', 'success', hash);
+            displayMessage('Transaction successful!', 'success', hash, false);
             setStatus('Nexus Testnet', 'text-green-500');
             
             // Add to transaction history
             addToTxHistory(methodName, hash);
             
-            await updateCount(true);
+            // Events will handle updates automatically, but we can trigger badge check
             await updateBadge();
-            await fetchLeaderboard();
             await updateWalletBalance();
             await refreshCooldownTimer();
         } else {
-            displayMessage('Transaction failed (Status: Reverted).', 'error', hash);
+            displayMessage('Transaction failed (Status: Reverted).', 'error', hash, false);
         }
     } catch (e) {
         console.error("Transaction Error:", e);
+        hideTxProgress();
+        
         let displayReason = 'Transaction failed.';
         
         if (e.message?.includes('User rejected')) {
@@ -763,7 +989,7 @@ async function sendTransaction(methodName, buttonElement, originalText) {
             displayReason = e.message?.split('\n')[0]?.trim() || 'Transaction failed unexpectedly.';
         }
 
-        displayMessage(displayReason, 'error', hash);
+        displayMessage(displayReason, 'error', hash, false);
         if (userAddress) setStatus('Nexus Testnet', 'text-green-500');
     } finally {
         setActionButtonsEnabled(true);
@@ -888,6 +1114,16 @@ async function tryAutoReconnect() {
             lastCounterValue = Number(initialValue);
             ui.counterValue.textContent = lastCounterValue.toString();
             
+            // Get initial badge tier for milestone tracking
+            const stats = await readContract(wagmiConfig, {
+                address: CONTRACT_ADDRESS,
+                abi: CONTRACT_ABI,
+                functionName: 'getUserStats',
+                args: [userAddress],
+                chainId: NEXUS_CHAIN_ID_DEC,
+            });
+            previousBadgeTier = Number(stats[3]);
+            
             await updateBadge();
             await updateAdminUI();
             await updateWalletBalance();
@@ -895,6 +1131,7 @@ async function tryAutoReconnect() {
             displayTxHistory();
             startAutoRefresh();
             startCooldownAutoRefresh();
+            setupEventListeners(); // Setup event listeners
             console.log('Auto-reconnected:', userAddress);
             return true;
         } catch (e) {
@@ -1010,6 +1247,9 @@ async function tryAutoReconnect() {
             setStatus('Ready to connect', 'text-gray-500');
             updateConnectButton('DISCONNECTED');
             await updateCount(false);
+            
+            // Show skeleton then fetch leaderboard
+            ui.leaderboardSkeleton.classList.remove('hidden');
             fetchLeaderboard();
         }
 
@@ -1028,6 +1268,7 @@ async function tryAutoReconnect() {
                         setActionButtonsEnabled(false);
                         stopAutoRefresh();
                         stopCooldownAutoRefresh();
+                        cleanupEventListeners();
                         ui.walletBalance.classList.add('hidden');
                         ui.txHistoryContainer.classList.add('hidden');
                     } else {
@@ -1055,6 +1296,17 @@ async function tryAutoReconnect() {
                             ui.counterValue.textContent = lastCounterValue.toString();
                         }).catch(console.error);
                         
+                        // Get initial badge tier
+                        readContract(wagmiConfig, {
+                            address: CONTRACT_ADDRESS,
+                            abi: CONTRACT_ABI,
+                            functionName: 'getUserStats',
+                            args: [userAddress],
+                            chainId: NEXUS_CHAIN_ID_DEC,
+                        }).then(stats => {
+                            previousBadgeTier = Number(stats[3]);
+                        }).catch(console.error);
+                        
                         updateBadge();
                         updateAdminUI();
                         updateWalletBalance();
@@ -1062,6 +1314,7 @@ async function tryAutoReconnect() {
                         displayTxHistory();
                         startAutoRefresh();
                         startCooldownAutoRefresh();
+                        setupEventListeners(); // Setup event listeners
                     }
                 } else if (!account.isConnected && userAddress) {
                     console.log('Wallet disconnected');
@@ -1072,10 +1325,13 @@ async function tryAutoReconnect() {
                     setActionButtonsEnabled(false);
                     stopAutoRefresh();
                     stopCooldownAutoRefresh();
+                    cleanupEventListeners();
                     ui.cooldownTimer.textContent = '';
                     ui.badgeTierContainer.classList.add('hidden');
+                    ui.badgeSkeleton.classList.add('hidden');
                     ui.walletBalance.classList.add('hidden');
                     ui.txHistoryContainer.classList.add('hidden');
+                    previousBadgeTier = 0;
                 }
             }
         });
@@ -1132,7 +1388,8 @@ ui.resetBtn.onclick = async () => {
         ui.resetBtn.disabled = true;
         ui.resetBtn.innerHTML = '<svg class="animate-spin inline-block w-4 h-4 mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>Resetting...';
         
-        displayMessage("Sending reset transaction...", "info");
+        showTxProgress();
+        displayMessage("Sending reset transaction...", "info", null, true);
         
         console.log('📤 Sending reset transaction with:', {
             value: newValue,
@@ -1152,7 +1409,7 @@ ui.resetBtn.onclick = async () => {
         hash = result;
         
         console.log('✅ Transaction sent:', hash);
-        displayMessage("Waiting for confirmation...", "info", hash);
+        displayMessage("Waiting for confirmation...", "info", hash, true);
         
         const receipt = await waitForTransactionReceipt(wagmiConfig, { 
             hash, 
@@ -1160,20 +1417,20 @@ ui.resetBtn.onclick = async () => {
             timeout: 60000
         });
         
+        hideTxProgress();
         console.log('📦 Transaction receipt:', receipt);
         
         if (receipt.status === 'success') {
-            displayMessage(`✅ Counter reset to ${newValue} successfully!`, "success", hash);
-            lastCounterValue = newValue;
-            await updateCount(true);
-            await fetchLeaderboard();
+            displayMessage(`✅ Counter reset to ${newValue} successfully!`, "success", hash, false);
+            // Event listener will handle the counter update
             console.log('🎉 Reset completed successfully');
         } else {
-            displayMessage('Transaction failed (Status: Reverted).', 'error', hash);
+            displayMessage('Transaction failed (Status: Reverted).', 'error', hash, false);
             console.log('❌ Transaction reverted');
         }
     } catch (e) {
         console.error('❌ Reset error:', e);
+        hideTxProgress();
         
         let displayReason = 'Reset failed.';
         
@@ -1188,10 +1445,17 @@ ui.resetBtn.onclick = async () => {
             displayReason = `Reset failed: ${msg}`;
         }
         
-        displayMessage(displayReason, "error", hash);
+        displayMessage(displayReason, "error", hash, false);
     } finally {
         ui.resetBtn.disabled = false;
         ui.resetBtn.textContent = originalBtnText;
         console.log('🔄 Reset button restored');
     }
 }
+
+// Cleanup on page unload
+window.addEventListener('beforeunload', () => {
+    cleanupEventListeners();
+    stopAutoRefresh();
+    stopCooldownAutoRefresh();
+});
