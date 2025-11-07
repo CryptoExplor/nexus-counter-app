@@ -117,6 +117,9 @@ let previousBadgeTier = 0;
 const TX_HISTORY_KEY = 'nexus_counter_tx_history';
 const MAX_TX_HISTORY = 5;
 
+// Mini App Add Prompt (stored in localStorage)
+const MINIAPP_PROMPT_KEY = 'nexus_counter_miniapp_prompt_shown';
+
 // Safe localStorage wrapper
 const safeLocalStorage = {
   setItem: (key, value) => {
@@ -217,6 +220,194 @@ function formatTimeAgo(timestamp) {
     if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
     if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
     return `${Math.floor(seconds / 86400)}d ago`;
+}
+
+// Add Mini App Prompt
+function showAddMiniAppPrompt() {
+    // Check if already shown
+    const alreadyShown = safeLocalStorage.getItem(MINIAPP_PROMPT_KEY);
+    if (alreadyShown === 'true') {
+        console.log('Mini app prompt already shown, skipping');
+        return;
+    }
+    
+    // Create custom modal overlay
+    const overlay = document.createElement('div');
+    overlay.id = 'miniapp-prompt-overlay';
+    overlay.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.85);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 10000;
+        padding: 20px;
+        animation: fadeIn 0.3s ease-in-out;
+    `;
+    
+    // Create modal content
+    const modal = document.createElement('div');
+    modal.style.cssText = `
+        background: linear-gradient(135deg, #1f1f1f 0%, #2a2a2a 100%);
+        border-radius: 20px;
+        padding: 32px;
+        max-width: 420px;
+        width: 100%;
+        box-shadow: 0 20px 60px rgba(102, 126, 234, 0.3);
+        border: 2px solid rgba(102, 126, 234, 0.3);
+        animation: slideUp 0.3s ease-out;
+        position: relative;
+    `;
+    
+    modal.innerHTML = `
+        <style>
+            @keyframes fadeIn {
+                from { opacity: 0; }
+                to { opacity: 1; }
+            }
+            @keyframes slideUp {
+                from { transform: translateY(20px); opacity: 0; }
+                to { transform: translateY(0); opacity: 1; }
+            }
+            @keyframes pulse-glow {
+                0%, 100% { box-shadow: 0 0 20px rgba(102, 126, 234, 0.4); }
+                50% { box-shadow: 0 0 30px rgba(102, 126, 234, 0.6); }
+            }
+        </style>
+        
+        <div style="text-align: center;">
+            <div style="font-size: 64px; margin-bottom: 16px; animation: pulse-glow 2s infinite;">✨</div>
+            <h2 style="font-size: 24px; font-weight: 700; color: #ededed; margin-bottom: 12px;">
+                Add Nexus Counter to Your Farcaster
+            </h2>
+            <p style="font-size: 15px; color: #a3a3a3; line-height: 1.6; margin-bottom: 24px;">
+                Install this mini app to access it instantly from your Farcaster profile. Track the counter, earn badges, and compete on leaderboards!
+            </p>
+            
+            <div style="display: flex; flex-direction: column; gap: 12px;">
+                <button id="add-miniapp-btn" style="
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    color: white;
+                    border: none;
+                    border-radius: 12px;
+                    padding: 16px 24px;
+                    font-size: 16px;
+                    font-weight: 600;
+                    cursor: pointer;
+                    transition: all 0.3s ease;
+                    box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+                ">
+                    🚀 Add Mini App Now
+                </button>
+                
+                <button id="maybe-later-btn" style="
+                    background: transparent;
+                    color: #a3a3a3;
+                    border: 1px solid #3a3a3a;
+                    border-radius: 12px;
+                    padding: 12px 24px;
+                    font-size: 14px;
+                    font-weight: 500;
+                    cursor: pointer;
+                    transition: all 0.3s ease;
+                ">
+                    Maybe Later
+                </button>
+            </div>
+            
+            <p style="font-size: 12px; color: #666; margin-top: 16px;">
+                💡 You can always add it later from the Farcaster app
+            </p>
+        </div>
+    `;
+    
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+    
+    // Add hover effects
+    const addBtn = modal.querySelector('#add-miniapp-btn');
+    const laterBtn = modal.querySelector('#maybe-later-btn');
+    
+    addBtn.addEventListener('mouseenter', () => {
+        addBtn.style.transform = 'translateY(-2px)';
+        addBtn.style.boxShadow = '0 6px 20px rgba(102, 126, 234, 0.6)';
+    });
+    addBtn.addEventListener('mouseleave', () => {
+        addBtn.style.transform = 'translateY(0)';
+        addBtn.style.boxShadow = '0 4px 15px rgba(102, 126, 234, 0.4)';
+    });
+    
+    laterBtn.addEventListener('mouseenter', () => {
+        laterBtn.style.borderColor = '#667eea';
+        laterBtn.style.color = '#ededed';
+    });
+    laterBtn.addEventListener('mouseleave', () => {
+        laterBtn.style.borderColor = '#3a3a3a';
+        laterBtn.style.color = '#a3a3a3';
+    });
+    
+    // Handle add button click
+    addBtn.addEventListener('click', async () => {
+        try {
+            addBtn.innerHTML = '<svg class="animate-spin inline-block w-5 h-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Adding...';
+            addBtn.disabled = true;
+            
+            // Use Farcaster SDK to add mini app
+            if (sdk?.actions?.addFrame) {
+                const result = await sdk.actions.addFrame();
+                console.log('Mini app add result:', result);
+                
+                // Mark as shown
+                safeLocalStorage.setItem(MINIAPP_PROMPT_KEY, 'true');
+                
+                // Close modal with success message
+                modal.innerHTML = `
+                    <div style="text-align: center;">
+                        <div style="font-size: 64px; margin-bottom: 16px;">🎉</div>
+                        <h2 style="font-size: 24px; font-weight: 700; color: #ededed; margin-bottom: 12px;">
+                            Successfully Added!
+                        </h2>
+                        <p style="font-size: 15px; color: #a3a3a3; line-height: 1.6;">
+                            Nexus Counter is now in your Farcaster mini apps. Access it anytime from your profile!
+                        </p>
+                    </div>
+                `;
+                
+                setTimeout(() => {
+                    overlay.style.animation = 'fadeOut 0.3s ease-in-out';
+                    setTimeout(() => overlay.remove(), 300);
+                }, 2000);
+            }
+        } catch (error) {
+            console.error('Failed to add mini app:', error);
+            addBtn.textContent = 'Try Again';
+            addBtn.disabled = false;
+            
+            // Show error message
+            const errorMsg = document.createElement('p');
+            errorMsg.style.cssText = 'color: #ff6b6b; font-size: 13px; margin-top: 12px;';
+            errorMsg.textContent = 'Failed to add mini app. Please try again.';
+            modal.querySelector('div').appendChild(errorMsg);
+        }
+    });
+    
+    // Handle maybe later button
+    laterBtn.addEventListener('click', () => {
+        safeLocalStorage.setItem(MINIAPP_PROMPT_KEY, 'true');
+        overlay.style.opacity = '0';
+        setTimeout(() => overlay.remove(), 300);
+    });
+    
+    // Close on overlay click
+    overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) {
+            laterBtn.click();
+        }
+    });
 }
 
 // Confetti animation
@@ -1113,11 +1304,17 @@ function shareToTwitter() {
     }
 }
 
-// Initialize SDK
+// Initialize SDK and show add mini app prompt
 (async () => {
   try {
     await sdk.actions.ready({ disableNativeGestures: true });
-    console.log('Farcaster SDK initialized successfully');
+    console.log('✅ Farcaster SDK initialized successfully');
+    
+    // Show add mini app prompt after SDK is ready
+    setTimeout(() => {
+      showAddMiniAppPrompt();
+    }, 2000); // Wait 2 seconds after SDK ready to show prompt
+    
   } catch (e) {
     console.log('Farcaster SDK not available:', e);
   }
