@@ -1118,11 +1118,13 @@ function shareToTwitter() {
   try {
     await sdk.actions.ready({ disableNativeGestures: true });
     console.log('Farcaster SDK initialized successfully');
-    await sdk.actions.addMiniApp()
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    await sdk.actions.addMiniApp();
   } catch (e) {
-    console.log('Farcaster SDK not available:', e);
+    console.log('Farcaster SDK not available or failed to initialize:', e);
   }
 })();
+
 
 // Auto-reconnect on page load
 async function tryAutoReconnect() {
