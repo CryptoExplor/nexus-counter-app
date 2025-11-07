@@ -230,6 +230,105 @@
         @keyframes spin {
             to { transform: rotate(360deg); }
         }
+
+        /* Button consistency fix for Farcaster Frame environment */
+        .button-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 1rem;
+            justify-content: center;
+        }
+
+        .action-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 48px;
+            padding: 0 1.5rem;
+            font-size: 1.125rem;
+            font-weight: 500;
+            border-radius: 9999px;
+            transition: all 0.3s;
+            cursor: pointer;
+            border: none;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            flex: 1;
+            min-width: 140px;
+        }
+
+        .action-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .action-btn:not(:disabled):hover {
+            transform: translateY(-1px);
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+        }
+
+        .action-btn:not(:disabled):active {
+            transform: scale(0.98);
+        }
+
+        .action-btn span:first-child {
+            margin-right: 0.375rem;
+        }
+
+        /* Specific button colors */
+        .btn-decrement {
+            background-color: #dc2626;
+            color: white;
+        }
+
+        .btn-decrement:not(:disabled):hover {
+            background-color: #b91c1c;
+        }
+
+        .btn-decrement:disabled {
+            background-color: #fca5a5;
+        }
+
+        .btn-increment {
+            background-color: #16a34a;
+            color: white;
+        }
+
+        .btn-increment:not(:disabled):hover {
+            background-color: #15803d;
+        }
+
+        .btn-increment:disabled {
+            background-color: #86efac;
+        }
+
+        .btn-cast {
+            background-color: #9333ea;
+            color: white;
+        }
+
+        .btn-cast:hover {
+            background-color: #7e22ce;
+        }
+
+        .btn-twitter {
+            background-color: #3b82f6;
+            color: white;
+        }
+
+        .btn-twitter:hover {
+            background-color: #2563eb;
+        }
+
+        @media (max-width: 640px) {
+            .button-group {
+                flex-direction: column;
+            }
+            
+            .action-btn {
+                width: 100%;
+                min-width: unset;
+            }
+        }
     </style>
 </head>
 <body class="min-h-screen flex flex-col items-center p-4">
@@ -309,29 +408,29 @@
                     </div>
                 </div>
 
-                <div id="inc-dec-group" class="hidden flex space-x-4">
+                <div id="inc-dec-group" class="hidden button-group">
                     <div class="tooltip-container flex-1">
-                        <button id="decrement-btn" disabled class="w-full py-3 px-6 text-lg font-medium rounded-full bg-red-600 hover:bg-red-700 text-white shadow-xl transition-all duration-300 focus:outline-none focus:ring-4 focus:ring-red-500 focus:ring-opacity-50 disabled:bg-red-400 disabled:cursor-not-allowed active:scale-[0.98]">
+                        <button id="decrement-btn" disabled class="action-btn btn-decrement">
                             Decrement
                         </button>
                         <span class="tooltip">Decrease counter by 1 (requires small NEX fee + gas)</span>
                     </div>
                     <div class="tooltip-container flex-1">
-                        <button id="increment-btn" disabled class="w-full py-3 px-6 text-lg font-medium rounded-full bg-green-600 hover:bg-green-700 text-white shadow-xl transition-all duration-300 focus:outline-none focus:ring-4 focus:ring-green-500 focus:ring-opacity-50 disabled:bg-green-400 disabled:cursor-not-allowed active:scale-[0.98]">
+                        <button id="increment-btn" disabled class="action-btn btn-increment">
                             Increment
                         </button>
                         <span class="tooltip">Increase counter by 1 (requires small NEX fee + gas)</span>
                     </div>
                 </div>
 
-               <div id="share-buttons" class="hidden flex space-x-4">
-                    <button id="cast-btn" class="flex-1 py-3 px-6 text-lg font-medium rounded-full bg-purple-600 hover:bg-purple-700 text-white shadow-xl transition-all duration-300 focus:outline-none focus:ring-4 focus:ring-purple-500 focus:ring-opacity-50 active:scale-[0.98] flex items-center justify-center">
-                        <span class="inline-block align-middle">📣</span>
-                        <span class="inline-block align-middle ml-1">Cast</span>
+               <div id="share-buttons" class="hidden button-group">
+                    <button id="cast-btn" class="action-btn btn-cast">
+                        <span>📣</span>
+                        <span>Cast</span>
                     </button>
-                    <button id="twitter-btn" class="flex-1 py-3 px-6 text-lg font-medium rounded-full bg-blue-500 hover:bg-blue-600 text-white shadow-xl transition-all duration-300 focus:outline-none focus:ring-4 focus:ring-blue-400 focus:ring-opacity-50 active:scale-[0.98] flex items-center justify-center">
-                        <span class="inline-block align-middle">🐦</span>
-                        <span class="inline-block align-middle ml-1">Tweet</span>
+                    <button id="twitter-btn" class="action-btn btn-twitter">
+                        <span>🐦</span>
+                        <span>Tweet</span>
                     </button>
                 </div>
             </div>
