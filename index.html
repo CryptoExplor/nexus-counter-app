@@ -319,6 +319,22 @@
             background-color: #2563eb;
         }
 
+        /* ✅ FARCASTER FRAME BUTTON ALIGNMENT FIX */
+        .farcaster-frame #share-buttons .action-btn {
+            height: 48px !important;
+            line-height: 48px !important;
+            padding: 0 1.5rem !important;
+        }
+
+        .farcaster-frame #share-buttons .action-btn span {
+            line-height: 1 !important;
+            vertical-align: middle !important;
+        }
+
+        .farcaster-frame .button-group {
+            align-items: center !important;
+        }
+
         @media (max-width: 640px) {
             .button-group {
                 flex-direction: column;
@@ -479,6 +495,20 @@
     <div class="mt-4 mb-4 w-full max-w-lg flex justify-center">
         <img src="bottom.png" alt="Bottom Image" class="max-w-full h-auto rounded-xl shadow-lg" onerror="this.style.display='none'">
     </div>
+
+    <!-- ✅ AUTO-DETECT FARCASTER ENVIRONMENT -->
+    <script>
+        // Detect if running inside Farcaster Frame
+        (function() {
+            const isInIframe = window.self !== window.top;
+            const hasWarpcastUA = /Warpcast/i.test(navigator.userAgent);
+            
+            if (isInIframe || hasWarpcastUA) {
+                document.documentElement.classList.add('farcaster-frame');
+                console.log('🎯 Farcaster Frame environment detected');
+            }
+        })();
+    </script>
 
     <script type="module" src="./main.js"></script>
 </body>
