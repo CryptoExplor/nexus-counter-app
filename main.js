@@ -577,30 +577,18 @@ async function refreshCooldownTimer() {
 }
 
 function updateCooldownDisplay() {
-    if (!cooldownEndTime) {
-        ui.cooldownTimer.textContent = "";
-        return;
-    }
+    if (!cooldownEndTime) return;
 
     const now = Date.now();
-    
-    // If cooldown end time is in the past or more than 24 hours in the future, something is wrong
-    if (cooldownEndTime < now || cooldownEndTime > now + (24 * 60 * 60 * 1000)) {
+    if (now >= cooldownEndTime) {
         ui.cooldownTimer.textContent = "✅ Ready!";
         return;
     }
-    
     const remainingMs = cooldownEndTime - now;
     const remainingSec = Math.floor(remainingMs / 1000);
-    const hours = Math.floor(remainingSec / 3600);
-    const mins = Math.floor((remainingSec % 3600) / 60);
+    const mins = Math.floor(remainingSec / 60);
     const secs = remainingSec % 60;
-    
-    if (hours > 0) {
-        ui.cooldownTimer.textContent = `⏰ ${hours}h ${mins}m ${secs}s`;
-    } else {
-        ui.cooldownTimer.textContent = `⏰ ${mins}m ${secs < 10 ? "0" : ""}${secs}s`;
-    }
+    ui.cooldownTimer.textContent = `⏰ ${mins}m ${secs < 10 ? "0" : ""}${secs}s`;
 }
 
 function startCooldownAutoRefresh() {
