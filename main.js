@@ -586,11 +586,16 @@ function updateCooldownDisplay() {
     }
     const remainingMs = cooldownEndTime - now;
     const remainingSec = Math.floor(remainingMs / 1000);
-    const mins = Math.floor(remainingSec / 60);
+    const hours = Math.floor(remainingSec / 3600);
+    const mins = Math.floor((remainingSec % 3600) / 60);
     const secs = remainingSec % 60;
-    ui.cooldownTimer.textContent = `⏰ ${mins}m ${secs < 10 ? "0" : ""}${secs}s`;
+    
+    if (hours > 0) {
+        ui.cooldownTimer.textContent = `⏰ ${hours}h ${mins}m ${secs}s`;
+    } else {
+        ui.cooldownTimer.textContent = `⏰ ${mins}m ${secs < 10 ? "0" : ""}${secs}s`;
+    }
 }
-
 function startCooldownAutoRefresh() {
     stopCooldownAutoRefresh();
     cooldownIntervalId = setInterval(refreshCooldownTimer, 30000); // Check every 30s
