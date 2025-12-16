@@ -37,9 +37,9 @@ import { formatEther } from 'viem';
 // Configuration
 const PROJECT_ID = 'ad03e2d8544cdf786495f370a5fc2e33';
 const MINIAPP_URL = 'https://farcaster.xyz/miniapps/Nf8kjDxT6YXs/nexus-counter';
-const NEXUS_CHAIN_ID_DEC = 3940;
-const NEXUS_RPC_URL = 'https://nexus-testnet.g.alchemy.com/v2/d5bxPxUVzMKqbZ2CA4EZi';
-const EXPLORER_URL = 'https://testnet3.explorer.nexus.xyz';
+const NEXUS_CHAIN_ID_DEC = 3945;
+const NEXUS_RPC_URL = 'https://testnet.rpc.nexus.xyz';
+const EXPLORER_URL = 'https://nexus.testnet.blockscout.com/';
 const NATIVE_CURRENCY = { name: 'NEX', symbol: 'NEX', decimals: 18 };
 
 // Define Nexus Testnet chain
